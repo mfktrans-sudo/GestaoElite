@@ -12,6 +12,27 @@
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
+    <!-- ══════════════════════════════════════════════════════════════
+         FIREBASE — Authentication + Firestore (perfis de usuário)
+         SDK "compat" (API antiga, estilo firebase.auth()), compatível
+         com este arquivo único que roda como <script> comum (não módulo).
+    ══════════════════════════════════════════════════════════════ -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+    <script>
+        // Configuração do projeto Firebase "GestaoElite" (Firebase Console → Configurações do projeto)
+        var firebaseConfig = {
+            apiKey: "AIzaSyAVE2pQ4yH7MWvFUdem5jCPX4JhZf6UDDw",
+            authDomain: "gestaoelite-c7459.firebaseapp.com",
+            projectId: "gestaoelite-c7459",
+            storageBucket: "gestaoelite-c7459.firebasestorage.app",
+            messagingSenderId: "278396696859",
+            appId: "1:278396696859:web:87653925c82731d6b8bbbe"
+        };
+        firebase.initializeApp(firebaseConfig);
+    </script>
+
     <script>
         // ══════════════════════════════════════════════════════════════
         // AUTO-RESTORE — Backup 23/03/2026
@@ -722,11 +743,75 @@
         };
 
         // ══════════════════════════════════════════════════════
-        // SISTEMA DE LOGIN — credenciais armazenadas no IDB/LS
+        // SISTEMA DE LOGIN — Firebase Authentication + Firestore
         // ══════════════════════════════════════════════════════
-        const USUARIOS_DEFAULT = [
-            { login: 'admin', senha: 'Elite@2026', nome: 'Administrador', cargo: 'Gestor Geral', role: 'admin' }
-        ];
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // Dados do admin padrão, usados apenas para auto-criar a conta no
+        // Firebase no primeiro acesso (evita ter que cadastrá-la manualmente
+        // no Console). Depois do primeiro login, a senha real fica só no Firebase.
+        const ADMIN_PADRAO = { login: 'admin', senha: 'Elite@2026', nome: 'Administrador', cargo: 'Gestor Geral', role: 'admin' };
+
+        // O Firebase Authentication exige um formato de e-mail. Para manter a
+        // experiência de "login simples" (ex: "joao.silva"), convertemos
+        // internamente para um e-mail fictício sob este domínio.
+        const EMAIL_DOMAIN_LOGIN = 'gestaoelite.app';
+        const loginParaEmail = (login) => {
+            const l = (login || '').trim().toLowerCase();
+            return l.includes('@') ? l : `${l}@${EMAIL_DOMAIN_LOGIN}`;
+        };
+
+        const MENSAGENS_ERRO_FIREBASE = {
+            'auth/user-not-found': 'Login ou senha incorretos. Tente novamente.',
+            'auth/wrong-password': 'Login ou senha incorretos. Tente novamente.',
+            'auth/invalid-credential': 'Login ou senha incorretos. Tente novamente.',
+            'auth/invalid-email': 'Login inválido.',
+            'auth/too-many-requests': 'Muitas tentativas seguidas. Aguarde alguns minutos e tente novamente.',
+            'auth/network-request-failed': 'Falha de conexão com o Firebase. Verifique sua internet.',
+            'auth/email-already-in-use': 'Esse login já está em uso.',
+            'auth/weak-password': 'Senha fraca demais para o Firebase (mínimo 6 caracteres).',
+            'auth/requires-recent-login': 'Por segurança, informe sua senha atual corretamente para confirmar essa alteração.',
+        };
+        const traduzirErroFirebase = (e) => MENSAGENS_ERRO_FIREBASE[e && e.code] || 'Erro ao autenticar. Tente novamente.';
+
+        // ── Perfis de usuário (nome, cargo, role) ficam no Firestore, ──
+        // ── indexados pelo UID do Firebase Authentication.             ──
+        const buscarPerfilUsuario = async (uid) => {
+            const snap = await db.collection('usuarios').doc(uid).get();
+            return snap.exists ? snap.data() : null;
+        };
+
+        const salvarPerfilUsuario = async (uid, dados) => {
+            await db.collection('usuarios').doc(uid).set(dados, { merge: true });
+        };
+
+        const listarPerfisUsuarios = async () => {
+            const snap = await db.collection('usuarios').get();
+            return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+        };
+
+        // Cria um novo usuário no Firebase Authentication + perfil no Firestore
+        // SEM derrubar a sessão do admin que está logado no momento — para isso
+        // usamos uma instância secundária e independente do app Firebase.
+        const criarUsuarioFirebase = async ({ login, senha, nome, cargo, role }) => {
+            const nomeApp = 'AppSecundarioCriacao';
+            const appSecundario = firebase.apps.find(a => a.name === nomeApp) || firebase.initializeApp(firebaseConfig, nomeApp);
+            const authSecundario = appSecundario.auth();
+            try {
+                const cred = await authSecundario.createUserWithEmailAndPassword(loginParaEmail(login), senha);
+                await salvarPerfilUsuario(cred.user.uid, {
+                    login: login.trim(),
+                    nome: nome.trim(),
+                    cargo: (cargo || '').trim(),
+                    role: role || 'usuario',
+                    ativo: true,
+                });
+                return cred.user.uid;
+            } finally {
+                await authSecundario.signOut().catch(() => {});
+            }
+        };
 
         function LoginScreen({ onLogin }) {
             const [loginVal, setLoginVal] = useState('');
@@ -751,31 +836,50 @@
 
             const handleLogin = async () => {
                 setErro('');
+                if (!loginVal.trim() || !senhaVal) { setErro('Informe login e senha.'); return; }
                 setCarregando(true);
-                await new Promise(r => setTimeout(r, 600));
+                const email = loginParaEmail(loginVal);
                 try {
-                    let usuarios = [];
+                    let cred;
                     try {
-                        const idbU = await idbGet('usuarios_sistema');
-                        const lsU = localStorage.getItem('usuarios_sistema');
-                        const parsed = lsU ? JSON.parse(lsU) : null;
-                        if (idbU && Array.isArray(idbU) && idbU.length > 0) usuarios = idbU;
-                        else if (parsed && Array.isArray(parsed) && parsed.length > 0) usuarios = parsed;
-                        else usuarios = USUARIOS_DEFAULT;
-                    } catch(e) { usuarios = USUARIOS_DEFAULT; }
-
-                    const user = usuarios.find(u => u.login.trim().toLowerCase() === loginVal.trim().toLowerCase() && u.senha === senhaVal);
-                    if (user) {
-                        if (lembrar) {
-                            localStorage.setItem('login_salvo', JSON.stringify({ login: loginVal.trim(), senha: senhaVal }));
+                        cred = await auth.signInWithEmailAndPassword(email, senhaVal);
+                    } catch (errAuth) {
+                        // Primeiro acesso: se estiverem digitando exatamente as credenciais
+                        // padrão de admin e a conta ainda não existe no Firebase, cria
+                        // automaticamente (evita passo manual no Console).
+                        const ehAdminPadrao = loginVal.trim().toLowerCase() === ADMIN_PADRAO.login && senhaVal === ADMIN_PADRAO.senha;
+                        if (ehAdminPadrao && errAuth.code === 'auth/user-not-found') {
+                            cred = await auth.createUserWithEmailAndPassword(email, senhaVal);
+                            await salvarPerfilUsuario(cred.user.uid, {
+                                login: ADMIN_PADRAO.login, nome: ADMIN_PADRAO.nome, cargo: ADMIN_PADRAO.cargo, role: ADMIN_PADRAO.role, ativo: true,
+                            });
                         } else {
-                            localStorage.removeItem('login_salvo');
+                            throw errAuth;
                         }
-                        onLogin(user);
-                    } else {
-                        setErro('Login ou senha incorretos. Tente novamente.');
                     }
-                } catch(e) { setErro('Erro interno. Tente novamente.'); }
+
+                    let perfil = await buscarPerfilUsuario(cred.user.uid);
+                    if (!perfil) {
+                        // Conta existe no Firebase Auth mas ainda não tem perfil salvo no Firestore
+                        perfil = { login: loginVal.trim(), nome: '', cargo: '', role: 'usuario', ativo: true };
+                        await salvarPerfilUsuario(cred.user.uid, perfil);
+                    }
+                    if (perfil.ativo === false) {
+                        await auth.signOut();
+                        setErro('Este usuário foi desativado. Fale com um administrador.');
+                        setCarregando(false);
+                        return;
+                    }
+
+                    if (lembrar) {
+                        localStorage.setItem('login_salvo', JSON.stringify({ login: loginVal.trim(), senha: senhaVal }));
+                    } else {
+                        localStorage.removeItem('login_salvo');
+                    }
+                    onLogin({ uid: cred.user.uid, ...perfil });
+                } catch(e) {
+                    setErro(traduzirErroFirebase(e));
+                }
                 setCarregando(false);
             };
 
@@ -1040,7 +1144,26 @@
         function App() {
             const [abaAtiva, setAbaAtiva] = useState('dashboard');
             const [usuarioLogado, setUsuarioLogado] = useState(null);
+            const [verificandoSessao, setVerificandoSessao] = useState(true);
             const [boasVindas, setBoasVindas] = useState(false);
+
+            // Restaura a sessão automaticamente se o Firebase já tiver um
+            // usuário autenticado (ex: ao recarregar a página, sem precisar
+            // digitar login/senha de novo).
+            useEffect(() => {
+                const unsub = auth.onAuthStateChanged(async (fbUser) => {
+                    if (fbUser) {
+                        try {
+                            const perfil = await buscarPerfilUsuario(fbUser.uid);
+                            if (perfil && perfil.ativo !== false) {
+                                setUsuarioLogado({ uid: fbUser.uid, ...perfil });
+                            }
+                        } catch (e) { /* sem perfil ainda: deixa a tela de login lidar */ }
+                    }
+                    setVerificandoSessao(false);
+                });
+                return () => unsub();
+            }, []);
             const [abrirMovForm, setAbrirMovForm] = useState(false);
             const [colaboradores, setColaboradores] = useState([]);
             const [registros, setRegistros] = useState([]);
@@ -1613,11 +1736,20 @@
 
             const handleLogout = () => {
                 if (confirm('Deseja sair do sistema?')) {
+                    auth.signOut().catch(() => {});
                     setUsuarioLogado(null);
                 }
             };
 
-            // ── Tela de login ──
+            // ── Verificando sessão do Firebase / Tela de login ──
+            if (verificandoSessao) {
+                return (
+                    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#6d28d9 0%,#00b4d8 100%)',color:'white',fontFamily:"'Inter',system-ui,sans-serif",fontWeight:'700',fontSize:'15px',gap:'10px',flexDirection:'column'}}>
+                        <span style={{fontSize:'34px'}}>🏆</span>
+                        <span>Verificando sessão...</span>
+                    </div>
+                );
+            }
             if (!usuarioLogado) {
                 return <LoginScreen onLogin={handleLoginSuccess} />;
             }
@@ -1998,6 +2130,7 @@
                                 {abaAtiva === 'administrador' && (
                                     <PainelAdministrador
                                         usuarioLogado={usuarioLogado}
+                                        setUsuarioLogado={setUsuarioLogado}
                                     />
                                 )}
                                 {abaAtiva === 'entrevistas' && (
@@ -2706,7 +2839,7 @@
         // ══════════════════════════════════════════════════════════════
         // PAINEL ADMINISTRADOR
         // ══════════════════════════════════════════════════════════════
-        function PainelAdministrador({ usuarioLogado }) {
+        function PainelAdministrador({ usuarioLogado, setUsuarioLogado }) {
             const [usuarios, setUsuarios] = useState([]);
             const [form, setForm] = useState({ login: '', senha: '', confirmarSenha: '', nome: '', cargo: '', role: 'usuario' });
             const [editandoId, setEditandoId] = useState(null);
@@ -2729,32 +2862,24 @@
                 return { regras, forca };
             };
 
+            const [carregandoAcao, setCarregandoAcao] = useState(false);
+
             const carregarUsuarios = async () => {
                 try {
-                    const idbU = await idbGet('usuarios_sistema');
-                    const lsRaw = localStorage.getItem('usuarios_sistema');
-                    const lsParsed = lsRaw ? JSON.parse(lsRaw) : null;
-                    if (idbU && Array.isArray(idbU) && idbU.length > 0) setUsuarios(idbU);
-                    else if (lsParsed && Array.isArray(lsParsed) && lsParsed.length > 0) setUsuarios(lsParsed);
-                    else setUsuarios(USUARIOS_DEFAULT);
-                } catch(e) { setUsuarios(USUARIOS_DEFAULT); }
+                    const lista = await listarPerfisUsuarios();
+                    setUsuarios(lista);
+                } catch(e) { setMsg({ tipo: 'erro', txt: 'Erro ao carregar usuários do Firebase.' }); }
             };
 
             useEffect(() => { carregarUsuarios(); }, []);
-
-            const salvarUsuarios = async (lista) => {
-                try {
-                    await idbSet('usuarios_sistema', lista);
-                    localStorage.setItem('usuarios_sistema', JSON.stringify(lista));
-                    setUsuarios(lista);
-                } catch(e) { setMsg({ tipo: 'erro', txt: 'Erro ao salvar usuários.' }); }
-            };
 
             const showMsg = (tipo, txt) => {
                 setMsg({ tipo, txt });
                 setTimeout(() => setMsg(null), 4000);
             };
 
+            // editandoId agora guarda o UID do Firebase (identidade fixa),
+            // já que o "login" pode ser alterado depois de criado.
             const salvarUsuario = async () => {
                 if (!form.login.trim() || !form.nome.trim()) { showMsg('erro', 'Login e Nome são obrigatórios.'); return; }
                 if (!editandoId && !form.senha) { showMsg('erro', 'Senha obrigatória para novo usuário.'); return; }
@@ -2763,32 +2888,65 @@
                     const { forca } = avaliarSenha(form.senha);
                     if (forca < 3) { showMsg('erro', 'Senha fraca demais. Use maiúsculas, números e símbolos.'); return; }
                 }
-                const lista = [...usuarios];
-                if (editandoId) {
-                    const idx = lista.findIndex(u => u.login === editandoId);
-                    if (idx !== -1) {
-                        lista[idx] = { ...lista[idx], nome: form.nome, cargo: form.cargo, role: form.role, ...(form.senha ? { senha: form.senha } : {}) };
+                setCarregandoAcao(true);
+                try {
+                    if (editandoId) {
+                        // Edição: atualiza apenas o perfil no Firestore (nome/cargo/role).
+                        // Alterar login (e-mail) ou senha de OUTRO usuário exige o
+                        // Firebase Admin SDK (não disponível no navegador) — cada
+                        // usuário troca a própria senha/login em "🔑 Meu Login".
+                        await salvarPerfilUsuario(editandoId, { nome: form.nome.trim(), cargo: form.cargo.trim(), role: form.role });
+                        showMsg('ok', '✅ Usuário atualizado com sucesso!');
+                    } else {
+                        if (usuarios.find(u => (u.login || '').toLowerCase() === form.login.trim().toLowerCase())) {
+                            showMsg('erro', 'Login já existe!'); setCarregandoAcao(false); return;
+                        }
+                        await criarUsuarioFirebase({ login: form.login, senha: form.senha, nome: form.nome, cargo: form.cargo, role: form.role });
+                        showMsg('ok', '✅ Usuário criado com sucesso no Firebase!');
                     }
-                } else {
-                    if (lista.find(u => u.login.toLowerCase() === form.login.toLowerCase())) { showMsg('erro', 'Login já existe!'); return; }
-                    lista.push({ login: form.login.trim(), senha: form.senha, nome: form.nome.trim(), cargo: form.cargo.trim(), role: form.role });
+                    await carregarUsuarios();
+                    setForm({ login: '', senha: '', confirmarSenha: '', nome: '', cargo: '', role: 'usuario' });
+                    setEditandoId(null);
+                } catch (e) {
+                    showMsg('erro', traduzirErroFirebase(e));
                 }
-                await salvarUsuarios(lista);
-                setForm({ login: '', senha: '', confirmarSenha: '', nome: '', cargo: '', role: 'usuario' });
-                setEditandoId(null);
-                showMsg('ok', editandoId ? '✅ Usuário atualizado com sucesso!' : '✅ Usuário criado com sucesso!');
+                setCarregandoAcao(false);
             };
 
-            const excluirUsuario = async (login) => {
-                if (login === usuarioLogado?.login) { showMsg('erro', 'Você não pode excluir seu próprio usuário.'); return; }
-                if (!confirm(`⚠️ Excluir usuário "${login}"?`)) return;
-                const lista = usuarios.filter(u => u.login !== login);
-                await salvarUsuarios(lista);
-                showMsg('ok', '✅ Usuário excluído.');
+            // Não é possível apagar a conta de OUTRO usuário no Firebase
+            // Authentication a partir do navegador (isso exige o Admin SDK,
+            // normalmente rodando em um backend/Cloud Function). Por isso,
+            // "excluir" aqui DESATIVA o acesso (bloqueia o login), mantendo
+            // o histórico. Para remover a conta de fato, use o Firebase
+            // Console → Authentication → Users.
+            const excluirUsuario = async (u) => {
+                if (u.uid === usuarioLogado?.uid) { showMsg('erro', 'Você não pode desativar seu próprio usuário.'); return; }
+                if (!confirm(`⚠️ Desativar o acesso de "${u.login}"? Ele(a) não conseguirá mais entrar no sistema.\n\n(Para apagar a conta por completo, use o Firebase Console → Authentication.)`)) return;
+                setCarregandoAcao(true);
+                try {
+                    await salvarPerfilUsuario(u.uid, { ativo: false });
+                    await carregarUsuarios();
+                    showMsg('ok', '✅ Acesso desativado.');
+                } catch (e) {
+                    showMsg('erro', traduzirErroFirebase(e));
+                }
+                setCarregandoAcao(false);
+            };
+
+            const reativarUsuario = async (u) => {
+                setCarregandoAcao(true);
+                try {
+                    await salvarPerfilUsuario(u.uid, { ativo: true });
+                    await carregarUsuarios();
+                    showMsg('ok', '✅ Acesso reativado.');
+                } catch (e) {
+                    showMsg('erro', traduzirErroFirebase(e));
+                }
+                setCarregandoAcao(false);
             };
 
             const iniciarEdicao = (u) => {
-                setEditandoId(u.login);
+                setEditandoId(u.uid);
                 setForm({ login: u.login, senha: '', confirmarSenha: '', nome: u.nome, cargo: u.cargo || '', role: u.role || 'usuario' });
             };
 
@@ -2848,8 +3006,9 @@
                                             <option value="usuario">👤 Usuário</option>
                                         </select>
                                     </div>
+                                    {!editandoId && (
                                     <div>
-                                        <label style={{fontSize:'11px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',letterSpacing:'.06em',display:'block',marginBottom:'5px'}}>{editandoId ? 'Nova Senha (deixe em branco para manter)' : 'Senha *'}</label>
+                                        <label style={{fontSize:'11px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',letterSpacing:'.06em',display:'block',marginBottom:'5px'}}>Senha *</label>
                                         <div style={{position:'relative'}}>
                                             <input style={{...inputStyle,paddingRight:'40px'}} type={mostrarSenhas['nova']?'text':'password'} value={form.senha} onChange={e=>setForm(p=>({...p,senha:e.target.value}))} placeholder="Mínimo 8 caracteres" />
                                             <button onClick={()=>setMostrarSenhas(p=>({...p,nova:!p.nova}))} style={{position:'absolute',right:'10px',top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:'15px',color:'#94a3b8'}}>
@@ -2866,6 +3025,8 @@
                                             </div>
                                         )}
                                     </div>
+                                    )}
+                                    {!editandoId && (
                                     <div>
                                         <label style={{fontSize:'11px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',letterSpacing:'.06em',display:'block',marginBottom:'5px'}}>Confirmar Senha</label>
                                         <div style={{position:'relative'}}>
@@ -2876,11 +3037,17 @@
                                         </div>
                                         {form.confirmarSenha && form.confirmarSenha !== form.senha && <div style={{fontSize:'11px',fontWeight:'700',color:'#ef4444',marginTop:'3px'}}>⚠️ As senhas não coincidem</div>}
                                     </div>
+                                    )}
+                                    {editandoId && (
+                                        <div style={{gridColumn:'1 / -1',fontSize:'12px',color:'#94a3b8',fontWeight:'600',background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'10px',padding:'10px 12px'}}>
+                                            ℹ️ Por segurança, a senha e o login (e-mail) de outro usuário só podem ser trocados por ele mesmo, em <strong>🔑 Meu Login</strong>. Aqui você pode editar nome, cargo e perfil.
+                                        </div>
+                                    )}
                                 </div>
                                 <div style={{display:'flex',gap:'10px'}}>
-                                    <button onClick={salvarUsuario}
-                                        style={{background:'linear-gradient(135deg,#4c1d95,#6d28d9)',color:'white',border:'none',borderRadius:'12px',padding:'11px 24px',fontSize:'14px',fontWeight:'800',cursor:'pointer'}}>
-                                        {editandoId ? '💾 Salvar Alterações' : '➕ Criar Usuário'}
+                                    <button onClick={salvarUsuario} disabled={carregandoAcao}
+                                        style={{background:carregandoAcao?'#94a3b8':'linear-gradient(135deg,#4c1d95,#6d28d9)',color:'white',border:'none',borderRadius:'12px',padding:'11px 24px',fontSize:'14px',fontWeight:'800',cursor:carregandoAcao?'not-allowed':'pointer'}}>
+                                        {carregandoAcao ? '⏳ Salvando...' : (editandoId ? '💾 Salvar Alterações' : '➕ Criar Usuário')}
                                     </button>
                                     {editandoId && (
                                         <button onClick={()=>{setEditandoId(null);setForm({login:'',senha:'',confirmarSenha:'',nome:'',cargo:'',role:'usuario'});}}
@@ -2896,7 +3063,7 @@
                                 <div style={{fontWeight:'800',fontSize:'16px',color:'#1e293b',marginBottom:'16px'}}>👥 Usuários Cadastrados ({usuarios.length})</div>
                                 <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
                                     {usuarios.map(u => (
-                                        <div key={u.login} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 16px',borderRadius:'12px',border:'1.5px solid #f1f5f9',background:u.login===usuarioLogado?.login?'#faf5ff':'#f8fafc',gap:'12px',flexWrap:'wrap'}}>
+                                        <div key={u.uid} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 16px',borderRadius:'12px',border:'1.5px solid #f1f5f9',background:u.uid===usuarioLogado?.uid?'#faf5ff':(u.ativo===false?'#fef2f2':'#f8fafc'),gap:'12px',flexWrap:'wrap',opacity:u.ativo===false?0.7:1}}>
                                             <div style={{display:'flex',alignItems:'center',gap:'12px',flex:1,minWidth:'200px'}}>
                                                 <div style={{width:'40px',height:'40px',borderRadius:'50%',background:'linear-gradient(135deg,#4c1d95,#6d28d9)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'18px',flexShrink:0}}>
                                                     {u.role==='admin'?'🔐':'👤'}
@@ -2910,9 +3077,14 @@
                                                 <span style={{fontSize:'11px',fontWeight:'800',padding:'3px 10px',borderRadius:'20px',background:u.role==='admin'?'#ede9fe':'#f0fdf4',color:u.role==='admin'?'#7c3aed':'#15803d'}}>
                                                     {u.role==='admin'?'Admin':'Usuário'}
                                                 </span>
-                                                {u.login===usuarioLogado?.login&&<span style={{fontSize:'11px',fontWeight:'800',padding:'3px 10px',borderRadius:'20px',background:'#dbeafe',color:'#1d4ed8'}}>● Você</span>}
-                                                <button onClick={()=>iniciarEdicao(u)} style={{background:'#eff6ff',color:'#2563eb',border:'1.5px solid #bfdbfe',borderRadius:'8px',padding:'6px 14px',fontSize:'12px',fontWeight:'700',cursor:'pointer'}}>✏️ Editar</button>
-                                                <button onClick={()=>excluirUsuario(u.login)} style={{background:'#fef2f2',color:'#dc2626',border:'1.5px solid #fecaca',borderRadius:'8px',padding:'6px 14px',fontSize:'12px',fontWeight:'700',cursor:'pointer'}}>🗑️</button>
+                                                {u.ativo===false&&<span style={{fontSize:'11px',fontWeight:'800',padding:'3px 10px',borderRadius:'20px',background:'#fee2e2',color:'#dc2626'}}>Desativado</span>}
+                                                {u.uid===usuarioLogado?.uid&&<span style={{fontSize:'11px',fontWeight:'800',padding:'3px 10px',borderRadius:'20px',background:'#dbeafe',color:'#1d4ed8'}}>● Você</span>}
+                                                <button onClick={()=>iniciarEdicao(u)} disabled={carregandoAcao} style={{background:'#eff6ff',color:'#2563eb',border:'1.5px solid #bfdbfe',borderRadius:'8px',padding:'6px 14px',fontSize:'12px',fontWeight:'700',cursor:'pointer'}}>✏️ Editar</button>
+                                                {u.ativo===false ? (
+                                                    <button onClick={()=>reativarUsuario(u)} disabled={carregandoAcao} style={{background:'#f0fdf4',color:'#15803d',border:'1.5px solid #bbf7d0',borderRadius:'8px',padding:'6px 14px',fontSize:'12px',fontWeight:'700',cursor:'pointer'}}>♻️ Reativar</button>
+                                                ) : (
+                                                    <button onClick={()=>excluirUsuario(u)} disabled={carregandoAcao} style={{background:'#fef2f2',color:'#dc2626',border:'1.5px solid #fecaca',borderRadius:'8px',padding:'6px 14px',fontSize:'12px',fontWeight:'700',cursor:'pointer'}}>🗑️</button>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -2955,22 +3127,49 @@
                                             <button onClick={()=>setMostrarSenhasMeu(p=>({...p,atual:!p.atual}))} style={{position:'absolute',right:'10px',top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:'15px',color:'#94a3b8'}}>{mostrarSenhasMeu['atual']?'🙈':'👁️'}</button>
                                         </div>
                                     </div>
-                                    <button onClick={async () => {
+                                    <button disabled={carregandoAcao} onClick={async () => {
                                         if (!formMeuLogin.senhaAtual) { showMsg('erro','Informe sua senha atual para confirmar.'); return; }
-                                        const lista = [...usuarios];
-                                        const idx = lista.findIndex(u => u.login === usuarioLogado?.login);
-                                        if (idx === -1) { showMsg('erro','Usuário não encontrado.'); return; }
-                                        if (lista[idx].senha !== formMeuLogin.senhaAtual) { showMsg('erro','Senha atual incorreta.'); return; }
                                         if (formMeuLogin.novaSenha && formMeuLogin.novaSenha !== formMeuLogin.confirmarNovaSenha) { showMsg('erro','As novas senhas não coincidem.'); return; }
                                         if (formMeuLogin.novaSenha) { const {forca:f} = avaliarSenha(formMeuLogin.novaSenha); if (f < 3) { showMsg('erro','Nova senha fraca demais.'); return; } }
-                                        const novoLogin = formMeuLogin.novoLogin.trim() || lista[idx].login;
-                                        if (novoLogin !== lista[idx].login && lista.some((u,i)=>i!==idx&&u.login.toLowerCase()===novoLogin.toLowerCase())) { showMsg('erro','Esse login já está em uso.'); return; }
-                                        lista[idx] = { ...lista[idx], login: novoLogin, ...(formMeuLogin.novaSenha ? {senha:formMeuLogin.novaSenha} : {}) };
-                                        // Atualiza login salvo se houver
-                                        try { const s = localStorage.getItem('login_salvo'); if(s) { const obj=JSON.parse(s); if(obj.login===usuarioLogado?.login) localStorage.setItem('login_salvo',JSON.stringify({login:novoLogin,senha:formMeuLogin.novaSenha||obj.senha})); } } catch(e){}
-                                        await salvarUsuarios(lista);
-                                        setFormMeuLogin({novoLogin:'',novaSenha:'',confirmarNovaSenha:'',senhaAtual:''});
-                                        showMsg('ok','✅ Login atualizado! Faça login novamente na próxima sessão.');
+                                        const novoLogin = formMeuLogin.novoLogin.trim() || usuarioLogado.login;
+                                        if (novoLogin.toLowerCase() !== usuarioLogado.login.toLowerCase() && usuarios.some(u => u.uid !== usuarioLogado.uid && (u.login||'').toLowerCase() === novoLogin.toLowerCase())) {
+                                            showMsg('erro','Esse login já está em uso.'); return;
+                                        }
+                                        setCarregandoAcao(true);
+                                        try {
+                                            const fbUser = auth.currentUser;
+                                            // Reautentica com a senha atual — o Firebase exige isso para
+                                            // qualquer troca de e-mail/senha por segurança.
+                                            const credential = firebase.auth.EmailAuthProvider.credential(fbUser.email, formMeuLogin.senhaAtual);
+                                            await fbUser.reauthenticateWithCredential(credential);
+
+                                            if (novoLogin.toLowerCase() !== usuarioLogado.login.toLowerCase()) {
+                                                await fbUser.updateEmail(loginParaEmail(novoLogin));
+                                            }
+                                            if (formMeuLogin.novaSenha) {
+                                                await fbUser.updatePassword(formMeuLogin.novaSenha);
+                                            }
+                                            await salvarPerfilUsuario(usuarioLogado.uid, { login: novoLogin });
+
+                                            // Atualiza "lembrar login" salvo localmente, se houver
+                                            try {
+                                                const s = localStorage.getItem('login_salvo');
+                                                if (s) {
+                                                    const obj = JSON.parse(s);
+                                                    if (obj.login && obj.login.toLowerCase() === usuarioLogado.login.toLowerCase()) {
+                                                        localStorage.setItem('login_salvo', JSON.stringify({ login: novoLogin, senha: formMeuLogin.novaSenha || obj.senha }));
+                                                    }
+                                                }
+                                            } catch(e) {}
+
+                                            setUsuarioLogado && setUsuarioLogado(p => ({ ...p, login: novoLogin }));
+                                            await carregarUsuarios();
+                                            setFormMeuLogin({ novoLogin:'', novaSenha:'', confirmarNovaSenha:'', senhaAtual:'' });
+                                            showMsg('ok','✅ Login/senha atualizados com sucesso no Firebase!');
+                                        } catch (e) {
+                                            showMsg('erro', traduzirErroFirebase(e));
+                                        }
+                                        setCarregandoAcao(false);
                                     }} style={{background:'linear-gradient(135deg,#6d28d9,#00b4d8)',color:'white',border:'none',borderRadius:'12px',padding:'12px',fontSize:'14px',fontWeight:'800',cursor:'pointer',marginTop:'4px'}}>
                                         💾 Salvar Alterações
                                     </button>
@@ -2989,7 +3188,7 @@
                                     { icone:'🔡', titulo:'Complexidade Obrigatória', desc:'As senhas devem conter letras maiúsculas, minúsculas, números e pelo menos um caractere especial (@, #, !, %, etc.).' },
                                     { icone:'🔄', titulo:'Troca Periódica', desc:'Recomendamos trocar as senhas a cada 90 dias. Acesse "Editar" no usuário desejado para atualizar a senha.' },
                                     { icone:'🚫', titulo:'Senhas Proibidas', desc:'Não use senhas óbvias como "123456", "senha", o próprio nome ou data de nascimento.' },
-                                    { icone:'🔐', titulo:'Armazenamento', desc:'As credenciais são armazenadas localmente no dispositivo (IndexedDB + localStorage). Não compartilhe o dispositivo desbloqueado.' },
+                                    { icone:'🔐', titulo:'Armazenamento', desc:'As credenciais de login ficam no Firebase Authentication (fora do dispositivo). Os demais dados do sistema continuam salvos localmente (IndexedDB/localStorage). Não compartilhe o dispositivo desbloqueado.' },
                                     { icone:'👤', titulo:'Controle de Acesso', desc:'Cada usuário deve ter credenciais individuais. Nunca compartilhe login e senha entre pessoas.' },
                                     { icone:'🚪', titulo:'Logout', desc:'Sempre clique em "Sair" ao terminar o uso, especialmente em dispositivos compartilhados.' },
                                     { icone:'⚠️', titulo:'Tentativas Inválidas', desc:'Após inserir a senha incorreta, uma mensagem de erro é exibida. Nenhum dado sensível é revelado durante o processo.' },
