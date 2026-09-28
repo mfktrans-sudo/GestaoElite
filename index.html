@@ -813,6 +813,196 @@
             }
         };
 
+        // ══════════════════════════════════════════════════════════════
+        // FEEDBACKS — persistência no Firestore (coleção "feedbacks")
+        // ══════════════════════════════════════════════════════════════
+        // Este projeto usa o SDK "compat" (script clássico, sem import), então
+        //   db.collection('feedbacks').add(dados)
+        // é o equivalente exato de  addDoc(collection(db, 'feedbacks'), dados).
+        //
+        // O Firestore limita cada documento a 1 MiB. Anexos em base64 (documento
+        // assinado / arquivo da advertência) podem passar disso, então ficam em
+        // pedaços na subcoleção feedbacks/{id}/anexos, e o documento principal
+        // guarda só metadados:  _anexos: { nomeDoCampo: quantidadeDePedaços }.
+        const FB_COLECAO = 'feedbacks';
+        const FB_CAMPOS_ANEXO = ['conteudoArquivoAssinado', 'conteudoArquivoAdvertencia'];
+        const FB_TAM_PEDACO = 700000;   // caracteres por doc de anexo (base64 = 1 byte/char, folga sob 1 MiB)
+        const fbAnexoCache = {};        // "idDoc:campo" -> base64 (memória, só nesta sessão)
+
+        const traduzirErroFirestore = (e) => {
+            const code = e && e.code;
+            if (code === 'permission-denied') return 'Sem permissão no Firestore. Confira se você está logado e se as regras de segurança liberam a coleção "feedbacks" (e a subcoleção "anexos") para usuários autenticados.';
+            if (code === 'unauthenticated') return 'Sessão expirada. Faça login novamente.';
+            if (code === 'unavailable' || code === 'deadline-exceeded') return 'Sem conexão com o Firestore. Verifique sua internet e tente novamente.';
+            if (code === 'resource-exhausted') return 'Cota do Firestore esgotada.';
+            if (code === 'invalid-argument') return 'O Firestore recusou os dados: ' + ((e && e.message) || '');
+            return (e && e.message) || 'Erro desconhecido.';
+        };
+
+        // Separa o objeto em { dados, anexos }. `dados` não leva id nem anexos.
+        // Em `anexos`, valor null/vazio significa "remover este anexo".
+        const fbSeparar = (obj) => {
+            const dados = {};
+            const anexos = {};
+            Object.keys(obj).forEach(k => {
+                if (k === 'id' || k === '_anexos') return;
+                if (FB_CAMPOS_ANEXO.includes(k)) { anexos[k] = obj[k] || null; return; }
+                if (obj[k] !== undefined) dados[k] = obj[k];
+            });
+            // JSON round-trip: o Firestore rejeita `undefined` aninhado
+            return { dados: JSON.parse(JSON.stringify(dados)), anexos };
+        };
+
+        const fbApagarPedacos = async (ref, campo, aPartirDe) => {
+            const snap = await ref.collection('anexos').where('campo', '==', campo).get();
+            const batch = db.batch();
+            let n = 0;
+            snap.docs.forEach(d => { if ((d.data().ordem || 0) >= aPartirDe) { batch.delete(d.ref); n++; } });
+            if (n > 0) await batch.commit();
+        };
+
+        const fbGravarPedacos = async (ref, campo, texto) => {
+            const partes = Math.ceil(texto.length / FB_TAM_PEDACO);
+            for (let i = 0; i < partes; i++) {
+                await ref.collection('anexos').doc(campo + '_' + i).set({
+                    campo, ordem: i, dados: texto.slice(i * FB_TAM_PEDACO, (i + 1) * FB_TAM_PEDACO)
+                });
+            }
+            await fbApagarPedacos(ref, campo, partes); // remove sobras de um arquivo anterior maior
+            return partes;
+        };
+
+        // CRIAR — addDoc(collection(db, 'feedbacks'), data). Retorna o ID gerado pelo Firestore.
+        const fbCriar = async (fb) => {
+            const { dados, anexos } = fbSeparar(fb);
+            if (fb.id) dados.idLocal = String(fb.id);   // id original (o HTML exportado carrega esse id)
+            dados.criadoPor = auth.currentUser ? auth.currentUser.uid : null;
+            const ref = await db.collection(FB_COLECAO).add(dados);
+            const campos = Object.keys(anexos).filter(c => anexos[c]);
+            if (campos.length > 0) {
+                try {
+                    const meta = {};
+                    for (const c of campos) meta['_anexos.' + c] = await fbGravarPedacos(ref, c, anexos[c]);
+                    await ref.update(meta);
+                } catch (e) {
+                    // não deixa um feedback "pela metade" (sem o arquivo) no banco
+                    for (const c of campos) { await fbApagarPedacos(ref, c, 0).catch(() => {}); }
+                    await ref.delete().catch(() => {});
+                    throw e;
+                }
+                campos.forEach(c => { fbAnexoCache[ref.id + ':' + c] = anexos[c]; });
+            }
+            return ref.id;
+        };
+
+        // ATUALIZAR — patch parcial. Em campos de anexo: string = substitui, null = remove.
+        const fbAtualizar = async (id, patch) => {
+            const ref = db.collection(FB_COLECAO).doc(String(id));
+            const { dados, anexos } = fbSeparar(patch);
+            const upd = { ...dados };
+            for (const c of Object.keys(anexos)) {
+                if (anexos[c]) {
+                    upd['_anexos.' + c] = await fbGravarPedacos(ref, c, anexos[c]);
+                    fbAnexoCache[id + ':' + c] = anexos[c];
+                } else {
+                    await fbApagarPedacos(ref, c, 0);
+                    upd['_anexos.' + c] = firebase.firestore.FieldValue.delete();
+                    delete fbAnexoCache[id + ':' + c];
+                }
+            }
+            await ref.update(upd);
+        };
+
+        // EXCLUIR — apaga o documento e os pedaços de anexo da subcoleção.
+        const fbExcluir = async (id) => {
+            const ref = db.collection(FB_COLECAO).doc(String(id));
+            await ref.delete();
+            try {
+                const snap = await ref.collection('anexos').get();
+                if (!snap.empty) {
+                    const batch = db.batch();
+                    snap.docs.forEach(d => batch.delete(d.ref));
+                    await batch.commit();
+                }
+            } catch (e) { console.warn('[Feedback] pedaços de anexo órfãos não removidos:', e); }
+            FB_CAMPOS_ANEXO.forEach(c => { delete fbAnexoCache[id + ':' + c]; });
+        };
+
+        // LISTAR — lê a coleção do Firestore (sem os anexos, que vêm depois em segundo plano).
+        const fbListar = async () => {
+            const snap = await db.collection(FB_COLECAO).get();
+            return snap.docs
+                .map(d => ({ ...d.data(), id: d.id }))
+                .sort((a, b) => String(a.dataCriacao || '').localeCompare(String(b.dataCriacao || '')));
+        };
+
+        const fbLerAnexo = async (id, campo) => {
+            const snap = await db.collection(FB_COLECAO).doc(String(id)).collection('anexos').where('campo', '==', campo).get();
+            return snap.docs.map(d => d.data()).sort((a, b) => a.ordem - b.ordem).map(p => p.dados).join('');
+        };
+
+        // Baixa os anexos em segundo plano e os injeta no estado (a lista aparece antes).
+        const fbHidratarAnexos = (lista, setFeedbacks) => {
+            lista.forEach(async (fb) => {
+                const campos = Object.keys(fb._anexos || {}).filter(c => fb._anexos[c] && fb[c] === undefined);
+                if (campos.length === 0) return;
+                const extra = {};
+                for (const c of campos) {
+                    try {
+                        const chave = fb.id + ':' + c;
+                        if (!fbAnexoCache[chave]) fbAnexoCache[chave] = await fbLerAnexo(fb.id, c);
+                        if (fbAnexoCache[chave]) extra[c] = fbAnexoCache[chave];
+                    } catch (e) { console.warn('[Feedback] anexo não carregado:', fb.id, c, e); }
+                }
+                if (Object.keys(extra).length === 0) return;
+                setFeedbacks(prev => prev.map(f => {
+                    if (f.id !== fb.id) return f;
+                    const novo = { ...f };
+                    Object.keys(extra).forEach(c => { if (novo[c] === undefined) novo[c] = extra[c]; });
+                    return novo;
+                }));
+            });
+        };
+
+        // Coloca a lista vinda do Firestore no estado do React.
+        const fbAplicarLista = (lista, setFeedbacks) => {
+            const comCache = lista.map(fb => {
+                const extra = {};
+                Object.keys(fb._anexos || {}).forEach(c => {
+                    const v = fbAnexoCache[fb.id + ':' + c];
+                    if (fb._anexos[c] && v && fb[c] === undefined) extra[c] = v;
+                });
+                return { ...fb, ...extra };
+            });
+            setFeedbacks(comCache);
+            fbHidratarAnexos(comCache, setFeedbacks);
+            return comCache;
+        };
+
+        // RECARREGAR — busca de novo no Firestore e atualiza a tela.
+        const fbRecarregar = async (setFeedbacks) => fbAplicarLista(await fbListar(), setFeedbacks);
+
+        // MIGRAÇÃO ÚNICA — envia ao Firestore o que estava só em localStorage/IndexedDB.
+        // Usa o id antigo como ID do documento (set), então repetir não duplica.
+        const fbMigrarLocais = async (locais) => {
+            for (const fb of locais) {
+                const { dados, anexos } = fbSeparar(fb);
+                const idDoc = String(fb.id || '').replace(/\//g, '_');
+                const ref = idDoc ? db.collection(FB_COLECAO).doc(idDoc) : db.collection(FB_COLECAO).doc();
+                dados.idLocal = String(fb.id || '');
+                dados.migradoDoNavegador = true;
+                dados.criadoPor = auth.currentUser ? auth.currentUser.uid : null;
+                const meta = {};
+                for (const c of Object.keys(anexos)) {
+                    if (!anexos[c]) continue;
+                    meta[c] = await fbGravarPedacos(ref, c, anexos[c]);
+                    fbAnexoCache[ref.id + ':' + c] = anexos[c];
+                }
+                if (Object.keys(meta).length > 0) dados._anexos = meta;
+                await ref.set(dados);
+            }
+        };
+
         function LoginScreen({ onLogin }) {
             const [loginVal, setLoginVal] = useState('');
             const [senhaVal, setSenhaVal] = useState('');
@@ -1177,6 +1367,7 @@
             const [bancoHoras, setBancoHoras] = useState([]);
             const [bhSnapshots, setBhSnapshots] = useState([]);
             const [feedbacks, setFeedbacks] = useState([]);
+            const fbLocaisRef = useRef(null); // Promise<Array>: feedbacks lidos do navegador na abertura (p/ migração)
             const [afastamentos, setAfastamentos] = useState([]);
             const [folgas, setFolgas] = useState(() => {
                 try { const s = localStorage.getItem('folgas'); return s ? JSON.parse(s) : []; } catch(e) { return []; }
@@ -1233,6 +1424,8 @@
 
             useEffect(() => {
                 // Carregamento assíncrono priorizando IndexedDB (mais persistente que localStorage)
+                let resolverFbLocais = () => {};
+                fbLocaisRef.current = new Promise(r => { resolverFbLocais = r; });
                 const carregarDados = async () => {
                     const [colabs, regs, esc, fer, desl, movs, avals, atit, marms, fbs] = await Promise.all([
                         storage.getWithFallback('colaboradores'),
@@ -1280,6 +1473,7 @@
                             return f;
                         }));
                         setFeedbacks(fbsRestaurados);
+                        resolverFbLocais(fbsRestaurados);
                     }
                     const afasts = await storage.getWithFallback('afastamentos');
                     if (afasts && afasts.length > 0) setAfastamentos(afasts);
@@ -1301,7 +1495,7 @@
                         if (snapLista.length > 0) setBhSnapshots(snapLista);
                     } catch(e) {}
                 };
-                carregarDados();
+                carregarDados().finally(() => resolverFbLocais([]));
 
                 // Polling para manter bhSnapshots sincronizado quando Banco de Horas salvar novos ciclos
                 const pollSnapshots = async () => {
@@ -1638,6 +1832,45 @@
                 });
                 storage.set('feedbacks', feedbacksParaSalvar);
             }, [feedbacks]);
+
+            // ── Feedbacks: a fonte da verdade é o Firestore ──────────────────────
+            // Ao logar: (1) envia UMA vez ao Firestore o que existia só neste navegador,
+            // (2) carrega a lista real do banco. O efeito acima (localStorage/IndexedDB)
+            // passa a ser apenas cache/backup local.
+            const uidLogado = usuarioLogado ? usuarioLogado.uid : null;
+            useEffect(() => {
+                if (!uidLogado) return;
+                let cancelado = false;
+                (async () => {
+                    try {
+                        const locais = (fbLocaisRef.current ? await fbLocaisRef.current : []) || [];
+                        let lista = await fbListar();
+                        if (localStorage.getItem('fb_migrado_firestore') !== '1') {
+                            const idsNoFirestore = new Set(lista.map(f => String(f.id)));
+                            const pendentes = locais.filter(f => f && f.id && !idsNoFirestore.has(String(f.id)));
+                            if (pendentes.length > 0) {
+                                try {
+                                    await fbMigrarLocais(pendentes);
+                                    lista = await fbListar();
+                                    localStorage.setItem('fb_migrado_firestore', '1');
+                                    if (!cancelado) alert('☁️ ' + pendentes.length + ' feedback(s) que estavam salvos só neste navegador foram enviados ao Firestore.');
+                                } catch (e) {
+                                    console.error('[Feedback/Firestore] Falha na migração:', e);
+                                    if (!cancelado) alert('⚠️ Não consegui enviar os feedbacks antigos ao Firestore.\n\n' + traduzirErroFirestore(e) + '\n\nEles continuam salvos neste navegador e serão reenviados no próximo acesso.');
+                                    lista = [...lista, ...pendentes]; // mantém visíveis (e no cache local) até conseguir enviar
+                                }
+                            } else {
+                                localStorage.setItem('fb_migrado_firestore', '1');
+                            }
+                        }
+                        if (!cancelado) fbAplicarLista(lista, setFeedbacks);
+                    } catch (e) {
+                        console.error('[Feedback/Firestore] Falha ao carregar:', e);
+                        if (!cancelado) alert('⚠️ Não consegui carregar os feedbacks do Firestore.\n\n' + traduzirErroFirestore(e) + '\n\nEstou exibindo a cópia salva neste navegador.');
+                    }
+                })();
+                return () => { cancelado = true; };
+            }, [uidLogado]);
             
             useEffect(() => {
                 storage.set('ordenacaoAbas', ordenacaoAbas);
@@ -14396,6 +14629,8 @@
                             try { localStorage.setItem(k, localStorageData[k]); } catch(e) {}
                         });
                     }
+                    // Após restaurar um backup, permite reenviar ao Firestore os feedbacks que voltaram só localmente
+                    try { localStorage.removeItem('fb_migrado_firestore'); } catch(e) {}
                     // Restaura TODO o IndexedDB salvo no backup (banco de horas, feedbacks, anexos, fotos, etc.)
                     if (indexedDBData) {
                         try {
@@ -18065,6 +18300,35 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
             const [excluindoMotivo, setExcluindoMotivo] = useState(null);
             const [uploadRef] = useState(() => React.createRef());
 
+            // ── Persistência no Firestore ─────────────────────────────
+            const salvandoRef = useRef(false);
+            const recarregar = () => fbRecarregar(setFeedbacks);
+            // Executa uma escrita no Firestore e, se der certo, recarrega a lista do banco.
+            // Trava duplo clique (que criaria documentos duplicados) e, se falhar, avisa e
+            // devolve false — quem chama NÃO deve limpar o formulário nem fechar a tela.
+            const operarFirestore = async (descricao, fn) => {
+                if (salvandoRef.current) return false;
+                salvandoRef.current = true;
+                try {
+                    try {
+                        await fn();
+                    } catch (e) {
+                        console.error('[Feedback/Firestore] Erro ao ' + descricao + ':', e);
+                        alert('❌ Não foi possível ' + descricao + '.\n\n' + traduzirErroFirestore(e) + '\n\nOs dados continuam na tela para você tentar de novo.');
+                        return false;
+                    }
+                    try {
+                        await recarregar();
+                    } catch (e) {
+                        console.error('[Feedback/Firestore] Salvou, mas falhou ao recarregar a lista:', e);
+                        alert('⚠️ Salvo no Firestore, mas não consegui recarregar a lista agora. Atualize a página para vê-la.');
+                    }
+                    return true;
+                } finally {
+                    salvandoRef.current = false;
+                }
+            };
+
             // ── Upload de Feedback Antigo ─────────────────────────────
             const [showUploadAntigo, setShowUploadAntigo] = useState(false);
             const [uploadAntigoColab, setUploadAntigoColab] = useState('');
@@ -18082,7 +18346,7 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                 e.target.value = '';
             };
 
-            const salvarFeedbackAntigo = () => {
+            const salvarFeedbackAntigo = async () => {
                 if (!uploadAntigoColab) { alert('❌ Selecione o colaborador!'); return; }
                 if (!uploadAntigoArquivo) { alert('❌ Faça o upload do arquivo do feedback antigo!'); return; }
                 const colab = getColaborador(uploadAntigoColab);
@@ -18108,7 +18372,8 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                     feedbackAntigo: true,
                     dataCriacao: new Date().toISOString()
                 };
-                setFeedbacks(prev => [...prev, novoFb]);
+                const ok = await operarFirestore('salvar o feedback antigo', () => fbCriar(novoFb));
+                if (!ok) return;
                 setUploadAntigoColab('');
                 setUploadAntigoMotivo('Corretivo');
                 setUploadAntigoData((() => { const n=new Date(); const utc=n.getTime()+(n.getTimezoneOffset()*60000); const br=new Date(utc+(3600000*-3)); return br.getFullYear()+'-'+String(br.getMonth()+1).padStart(2,'0')+'-'+String(br.getDate()).padStart(2,'0'); })());
@@ -18116,7 +18381,7 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                 setUploadAntigoObs('');
                 setShowUploadAntigo(false);
                 setView('list');
-                alert('✅ Feedback antigo carregado com sucesso! O histórico do colaborador foi atualizado.');
+                alert('✅ Feedback antigo salvo no Firestore! O histórico do colaborador foi atualizado.');
             };
 
             // ── Advertência Jurídica ──────────────────────────────────
@@ -18124,7 +18389,7 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
             const [formAdv, setFormAdv] = useState({ colaboradorId:'', tituloAdvertencia:'', descricaoAdvertencia:'', dataFeedback: (() => { const n=new Date(); const utc=n.getTime()+(n.getTimezoneOffset()*60000); const br=new Date(utc+(3600000*-3)); return br.getFullYear()+'-'+String(br.getMonth()+1).padStart(2,'0')+'-'+String(br.getDate()).padStart(2,'0'); })() });
             const [advArquivo, setAdvArquivo] = useState(null); // { nome, conteudo, tipo }
 
-            const salvarAdvertenciaJuridica = () => {
+            const salvarAdvertenciaJuridica = async () => {
                 if (!formAdv.colaboradorId) { alert('❌ Selecione um colaborador!'); return; }
                 if (!formAdv.tituloAdvertencia.trim()) { alert('❌ Informe o título/tipo da advertência!'); return; }
                 const colab = colaboradores.find(c => c.id === formAdv.colaboradorId);
@@ -18147,11 +18412,12 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                     conteudoArquivoAdvertencia: advArquivo ? advArquivo.conteudo : null,
                     dataCriacao: new Date().toISOString()
                 };
-                setFeedbacks(prev => [...prev, nova]);
+                const ok = await operarFirestore('salvar a advertência', () => fbCriar(nova));
+                if (!ok) return;
                 setFormAdv({ colaboradorId:'', tituloAdvertencia:'', descricaoAdvertencia:'', dataFeedback: (() => { const n=new Date(); const utc=n.getTime()+(n.getTimezoneOffset()*60000); const br=new Date(utc+(3600000*-3)); return br.getFullYear()+'-'+String(br.getMonth()+1).padStart(2,'0')+'-'+String(br.getDate()).padStart(2,'0'); })() });
                 setAdvArquivo(null);
                 setShowFormAdv(false);
-                alert('✅ Advertência jurídica registrada e vinculada ao colaborador!');
+                alert('✅ Advertência jurídica salva no Firestore e vinculada ao colaborador!');
             };
 
             const handleUploadAdv = (e) => {
@@ -18187,32 +18453,31 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                 e.target.value = '';
             };
 
-            const salvarEdicaoAdv = () => {
+            const salvarEdicaoAdv = async () => {
                 if (!formEditAdv.tituloAdvertencia.trim()) { alert('❌ Informe o título/tipo da advertência!'); return; }
-                setFeedbacks(prev => prev.map(f => {
-                    if (f.id !== editandoAdv) return f;
-                    return {
-                        ...f,
-                        tituloAdvertencia: formEditAdv.tituloAdvertencia,
-                        motivo: formEditAdv.tituloAdvertencia,
-                        descricaoAdvertencia: formEditAdv.descricaoAdvertencia,
-                        dataFeedback: formEditAdv.dataFeedback,
-                        ...(editAdvArquivo ? {
-                            nomeArquivoAdvertencia: editAdvArquivo.nome,
-                            tipoArquivoAdvertencia: editAdvArquivo.tipo,
-                            conteudoArquivoAdvertencia: editAdvArquivo.conteudo
-                        } : {})
-                    };
-                }));
+                const patch = {
+                    tituloAdvertencia: formEditAdv.tituloAdvertencia,
+                    motivo: formEditAdv.tituloAdvertencia,
+                    descricaoAdvertencia: formEditAdv.descricaoAdvertencia,
+                    dataFeedback: formEditAdv.dataFeedback,
+                    ...(editAdvArquivo ? {
+                        nomeArquivoAdvertencia: editAdvArquivo.nome,
+                        tipoArquivoAdvertencia: editAdvArquivo.tipo,
+                        conteudoArquivoAdvertencia: editAdvArquivo.conteudo
+                    } : {})
+                };
+                const ok = await operarFirestore('atualizar a advertência', () => fbAtualizar(editandoAdv, patch));
+                if (!ok) return;
                 setEditandoAdv(null);
                 setEditAdvArquivo(null);
                 alert('✅ Advertência atualizada com sucesso!');
             };
 
-            const reabrirAdvertencia = (fb) => {
+            const reabrirAdvertencia = async (fb) => {
                 if (confirm('🔄 Reabrir esta advertência para substituição?\n\nO anexo atual será removido e você poderá enviar um novo arquivo ao editar.')) {
-                    setFeedbacks(prev => prev.map(f => f.id === fb.id ? { ...f, nomeArquivoAdvertencia: null, tipoArquivoAdvertencia: null, conteudoArquivoAdvertencia: null } : f));
-                    abrirEditarAdv({ ...fb, nomeArquivoAdvertencia: null, tipoArquivoAdvertencia: null, conteudoArquivoAdvertencia: null });
+                    const vazio = { nomeArquivoAdvertencia: null, tipoArquivoAdvertencia: null, conteudoArquivoAdvertencia: null };
+                    const ok = await operarFirestore('reabrir a advertência', () => fbAtualizar(fb.id, vazio));
+                    if (ok) abrirEditarAdv({ ...fb, ...vazio });
                 }
             };
 
@@ -18258,9 +18523,10 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                 setFeedbackGerado(fb);
             };
 
-            const salvarFeedback = (fbObj) => {
-                // Salva com status pendente_aplicacao — aguarda upload do doc assinado
-                setFeedbacks(prev => [...prev, { ...fbObj, status: 'pendente_aplicacao' }]);
+            const salvarFeedback = async (fbObj) => {
+                // addDoc(collection(db,'feedbacks'), data) — status pendente_aplicacao: aguarda upload do doc assinado
+                const ok = await operarFirestore('salvar o feedback', () => fbCriar({ ...fbObj, status: 'pendente_aplicacao' }));
+                if (!ok) return; // falhou: mantém o formulário/pré-visualização na tela
                 setFeedbackGerado(null);
                 setFormData({
                     colaboradorId: '',
@@ -18275,7 +18541,7 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                     dataFeedback: (() => { const n=new Date(); const utc=n.getTime()+(n.getTimezoneOffset()*60000); const br=new Date(utc+(3600000*-3)); return br.getFullYear()+'-'+String(br.getMonth()+1).padStart(2,'0')+'-'+String(br.getDate()).padStart(2,'0'); })()
                 });
                 setView('list');
-                alert('✅ Feedback salvo! Aguardando aplicação e upload do documento assinado.');
+                alert('✅ Feedback salvo no Firestore! Aguardando aplicação e upload do documento assinado.');
             };
 
             // Finaliza a aplicação de um feedback pendente via upload do doc assinado
@@ -18283,21 +18549,16 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                 const file = e.target.files[0];
                 if (!file) return;
                 const reader = new FileReader();
-                reader.onload = (ev) => {
+                reader.onload = async (ev) => {
                     const conteudoBase64 = ev.target.result; // data:type;base64,...
-                    setFeedbacks(prev => prev.map(f =>
-                        f.id === fbId
-                            ? {
-                                ...f,
-                                status: 'aplicado',
-                                dataAplicacao: new Date().toISOString(),
-                                nomeArquivoAssinado: file.name,
-                                tipoArquivoAssinado: file.type,
-                                conteudoArquivoAssinado: conteudoBase64
-                              }
-                            : f
-                    ));
-                    alert('✅ Aplicação finalizada! Feedback movido para o histórico de aplicados.');
+                    const ok = await operarFirestore('finalizar a aplicação do feedback', () => fbAtualizar(fbId, {
+                        status: 'aplicado',
+                        dataAplicacao: new Date().toISOString(),
+                        nomeArquivoAssinado: file.name,
+                        tipoArquivoAssinado: file.type,
+                        conteudoArquivoAssinado: conteudoBase64
+                    }));
+                    if (ok) alert('✅ Aplicação finalizada! Feedback movido para o histórico de aplicados.');
                 };
                 reader.readAsDataURL(file);
                 e.target.value = '';
@@ -18764,21 +19025,20 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                 const file = e.target.files[0];
                 if (!file) return;
                 const reader = new FileReader();
-                reader.onload = (ev) => {
+                reader.onload = async (ev) => {
                     try {
                         const content = ev.target.result;
                         // Tenta extrair dados do HTML de feedback como JSON embutido
                         const metaMatch = content.match(/data-feedback-json='([^']+)'/);
                         if (metaMatch) {
                             const fb = JSON.parse(decodeURIComponent(metaMatch[1]));
-                            setFeedbacks(prev => {
-                                if (prev.find(x => x.id === fb.id)) {
-                                    alert('ℹ️ Este feedback já está no histórico!');
-                                    return prev;
-                                }
-                                alert('✅ Feedback carregado e salvo no histórico!');
-                                return [...prev, { ...fb, status: 'aplicado' }];
-                            });
+                            // id do HTML = id original (idLocal) de um feedback já salvo
+                            if (feedbacks.some(x => String(x.id) === String(fb.id) || String(x.idLocal || '') === String(fb.id))) {
+                                alert('ℹ️ Este feedback já está no histórico!');
+                                return;
+                            }
+                            const ok = await operarFirestore('salvar o feedback importado', () => fbCriar({ ...fb, status: 'aplicado' }));
+                            if (ok) alert('✅ Feedback carregado e salvo no histórico!');
                         } else {
                             alert('⚠️ Arquivo não reconhecido como formulário de feedback válido.');
                         }
@@ -18790,9 +19050,9 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                 e.target.value = '';
             };
 
-            const excluirFeedback = (id) => {
+            const excluirFeedback = async (id) => {
                 if (confirm('⚠️ Excluir este feedback?')) {
-                    setFeedbacks(prev => prev.filter(f => f.id !== id));
+                    await operarFirestore('excluir o feedback', () => fbExcluir(id));
                 }
             };
 
@@ -19537,7 +19797,7 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                                                             ⬇️ Baixar
                                                         </button>
                                                     )}
-                                                    <button onClick={() => { if(confirm('Excluir esta advertência?')) setFeedbacks(prev=>prev.filter(f=>f.id!==fb.id)); }}
+                                                    <button onClick={() => { if(confirm('Excluir esta advertência?')) operarFirestore('excluir a advertência', () => fbExcluir(fb.id)); }}
                                                         className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-xl font-bold text-sm transition-all">
                                                         🗑️
                                                     </button>
@@ -19763,7 +20023,7 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                                                     )}
                                                     <button onClick={() => {
                                                         if (confirm('🔄 Reabrir este feedback para substituição?\n\nEle voltará para "Pendente de Aplicação" e poderá receber um novo documento assinado.')) {
-                                                            setFeedbacks(prev => prev.map(f => f.id === fb.id ? { ...f, status: 'pendente_aplicacao', dataAplicacao: null, nomeArquivoAssinado: null, conteudoArquivoAssinado: null } : f));
+                                                            operarFirestore('reabrir o feedback', () => fbAtualizar(fb.id, { status: 'pendente_aplicacao', dataAplicacao: null, nomeArquivoAssinado: null, conteudoArquivoAssinado: null }));
                                                         }
                                                     }}
                                                         className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all" title="Reabrir feedback para substituição">
