@@ -151,9 +151,25 @@
            ficavam cortadas e só apareciam inteiras quando a janela era
            maximizada manualmente. Agora o container aproveita mais espaço
            em qualquer resolução, sem depender do botão de maximizar. */
-        .max-w-7xl {
-            max-width: 1600px !important;
+        /* TELA CHEIA POR PADRÃO: o sistema sempre abre ocupando toda a largura.
+           Ao clicar no botão verde (restaurar) o body recebe a classe
+           'janela-restaurada' e o layout volta a ficar centralizado/reduzido. */
+        html body .max-w-7xl {
+            max-width: 100% !important;
             width: 100% !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+        }
+        html body #root > div.min-h-screen {
+            padding: 8px !important;
+        }
+        html body.janela-restaurada .max-w-7xl {
+            max-width: 1280px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+        html body.janela-restaurada #root > div.min-h-screen {
+            padding: 16px !important;
         }
 
         /* Tabelas dentro das abas: reduzem o espaçamento das colunas
@@ -598,27 +614,7 @@
         }
 
         function applyMaximizeStyles(maximize) {
-            const appDiv = document.querySelector('#root > div');
-            if (!appDiv) return;
-            if (maximize) {
-                appDiv.style.padding = '8px';
-                appDiv.style.minHeight = '100vh';
-                const innerDiv = appDiv.querySelector('.max-w-7xl');
-                if (innerDiv) {
-                    innerDiv.style.setProperty('max-width', '100%', 'important');
-                    innerDiv.style.margin = '0';
-                }
-                document.body.style.padding = '0';
-            } else {
-                appDiv.style.padding = '';
-                appDiv.style.minHeight = '';
-                const innerDiv = appDiv.querySelector('.max-w-7xl');
-                if (innerDiv) {
-                    innerDiv.style.removeProperty('max-width');
-                    innerDiv.style.margin = '';
-                }
-                document.body.style.padding = '';
-            }
+            document.body.classList.toggle('janela-restaurada', !maximize);
         }
 
         document.addEventListener('keydown', function(e) {
