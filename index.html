@@ -638,6 +638,31 @@
         document.getElementById('btnMaximize').title = 'Restaurar';
         document.getElementById('btnMaximize').textContent = '\u29C1';
         applyMaximizeStyles(true);
+
+        // Entra em tela cheia real assim que o usuario entrar na ferramenta.
+        // Os navegadores so permitem tela cheia apos uma acao do usuario (clique/tecla/toque),
+        // entao tentamos ao carregar e, se bloqueado, entramos no primeiro clique/tecla (ex.: login).
+        (function autoTelaCheia() {
+            const el = document.documentElement;
+            const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+            function emTelaCheia() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+            function entrar() {
+                if (emTelaCheia() || !req) return true;
+                try {
+                    const r = req.call(el);
+                    if (r && r.catch) r.catch(() => {});
+                } catch (e) {}
+                return false;
+            }
+            function aoInteragir(ev) {
+                // Nao interfere no botao de maximizar/restaurar
+                if (ev && ev.target && ev.target.closest && ev.target.closest('#btnMaximize')) return;
+                entrar();
+                ['pointerdown', 'keydown', 'touchend'].forEach(t => document.removeEventListener(t, aoInteragir, true));
+            }
+            entrar();
+            ['pointerdown', 'keydown', 'touchend'].forEach(t => document.addEventListener(t, aoInteragir, true));
+        })();
     </script>
 
     <script type="text/plain" id="appSource">
