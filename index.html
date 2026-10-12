@@ -11007,6 +11007,33 @@
                 }, 50);
             };
 
+            // Agrupa os lançamentos por colaborador (mantém a ordem de entrada)
+            const agruparRegistros = (lista) => {
+                const mapa = new Map();
+                (lista || []).forEach(r => {
+                    const k = String(r.colaboradorId);
+                    if (!mapa.has(k)) mapa.set(k, []);
+                    mapa.get(k).push(r);
+                });
+                return Array.from(mapa.values());
+            };
+            // Linha-resumo (totais) de um colaborador com mais de uma ocorrência
+            const resumirGrupo = (itens) => {
+                const soma = (campo) => itens.reduce((t, r) => t + (Number(r[campo]) || 0), 0);
+                const graus = itens.map(r => r.grau);
+                return {
+                    ...itens[0],
+                    tipo: itens.length + ' ocorrências',
+                    feedbackNegativo: soma('feedbackNegativo'),
+                    advertencia: soma('advertencia'),
+                    atestados: soma('atestados'),
+                    atrasos: soma('atrasos'),
+                    falha: soma('falha'),
+                    grau: graus.includes('Grave') ? 'Grave' : graus.includes('Leve') ? 'Leve' : (graus.find(g => g) || ''),
+                    observacoes: ''
+                };
+            };
+
             const adicionarOutroLancamento = (registro) => {
                 setEditando(null);
                 setForm({
@@ -11321,8 +11348,17 @@
                             ${th('Atestados','text-align:center;')}${th('Atrasos','text-align:center;')}
                             ${th('Falha Op.','text-align:center;')}${th('Grau','text-align:center;')}${th('Observações')}
                         </tr></thead>
-                        <tbody>${regsParaGerar.map((r,i) => `
-                            <tr style="background:${i%2===0?'#f8f7ff':'white'};">
+                        <tbody>${(() => {
+                            const mapaG = new Map();
+                            regsParaGerar.forEach(r => { const k = String(r.colaboradorId); if (!mapaG.has(k)) mapaG.set(k, []); mapaG.get(k).push(r); });
+                            const nGraus = (r) => r.grau==='Grave'?'color:#dc2626;font-weight:800;':r.grau==='Leve'?'color:#f59e0b;font-weight:700;':'';
+                            let linhaIdx = 0;
+                            return Array.from(mapaG.values()).map(itens => {
+                                const bg = (linhaIdx++ % 2 === 0) ? '#f8f7ff' : 'white';
+                                if (itens.length === 1) {
+                                    const r = itens[0];
+                                    return `
+                            <tr style="background:${bg};">
                                 ${td(`<strong>${r.nome}</strong>`)}
                                 ${tdC(r.matricula)}
                                 ${tdC(r.cargo)}
@@ -11331,9 +11367,43 @@
                                 ${tdC(r.atestados||'—')}
                                 ${tdC(r.atrasos||'—')}
                                 ${tdC(r.falha||'—')}
-                                ${tdC(r.grau||'—', r.grau==='Grave'?'color:#dc2626;font-weight:800;':r.grau==='Leve'?'color:#f59e0b;font-weight:700;':'')}
+                                ${tdC(r.grau||'—', nGraus(r))}
                                 ${td(r.observacoes||'—','font-size:12px;color:#6b7280;')}
-                            </tr>`).join('')}
+                            </tr>`;
+                                }
+                                const soma = (c) => itens.reduce((t, x) => t + (Number(x[c]) || 0), 0);
+                                const graus = itens.map(x => x.grau);
+                                const grauRes = graus.includes('Grave') ? 'Grave' : graus.includes('Leve') ? 'Leve' : (graus.find(g => g) || '');
+                                const r0 = itens[0];
+                                const resumo = `
+                            <tr style="background:#eef2ff;">
+                                ${td(`<strong>${r0.nome}</strong>`, 'border-left:4px solid #4f46e5;')}
+                                ${tdC(r0.matricula)}
+                                ${tdC(r0.cargo)}
+                                ${tdC(soma('feedbackNegativo')||'—', soma('feedbackNegativo')?'color:#dc2626;font-weight:700;':'')}
+                                ${tdC(soma('advertencia')||'—', soma('advertencia')?'color:#b45309;font-weight:700;':'')}
+                                ${tdC(soma('atestados')||'—')}
+                                ${tdC(soma('atrasos')||'—')}
+                                ${tdC(soma('falha')||'—')}
+                                ${tdC(grauRes||'—', nGraus({grau:grauRes}))}
+                                ${td(`${itens.length} ocorrências`,'font-size:12px;font-weight:700;color:#4f46e5;')}
+                            </tr>`;
+                                const subs = itens.map((r, k) => `
+                            <tr style="background:white;">
+                                ${td(`↳ Ocorrência ${k+1}${r.tipo ? ' — ' + r.tipo : ''}`, 'padding-left:28px;font-size:12px;color:#4b5563;border-left:4px solid #a5b4fc;')}
+                                ${tdC('')}
+                                ${tdC('')}
+                                ${tdC(r.feedbackNegativo||'—', r.feedbackNegativo?'color:#dc2626;font-weight:700;':'')}
+                                ${tdC(r.advertencia||'—', r.advertencia?'color:#b45309;font-weight:700;':'')}
+                                ${tdC(r.atestados||'—')}
+                                ${tdC(r.atrasos||'—')}
+                                ${tdC(r.falha||'—')}
+                                ${tdC(r.grau||'—', nGraus(r))}
+                                ${td(r.observacoes||'—','font-size:12px;color:#6b7280;')}
+                            </tr>`).join('');
+                                return resumo + subs;
+                            }).join('');
+                        })()}
                         </tbody>`)}` : '';
 
                 // ── SEÇÃO 2: Atitude de Dono ──────────────────────────────
@@ -11540,11 +11610,22 @@
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-200">
-                                                {ciclo.registros.map((reg, idx) => (
-                                                    <tr key={reg.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                                        <td className="px-3 py-2 font-bold text-gray-800">{reg.nome}</td>
-                                                        <td className="px-3 py-2 text-center text-gray-600">{reg.matricula}</td>
-                                                        <td className="px-3 py-2 text-center text-gray-600">{reg.cargo}</td>
+                                                {agruparRegistros(ciclo.registros).map((itens, gi) => {
+                                                    const multi = itens.length > 1;
+                                                    const linhas = multi
+                                                        ? [{ reg: resumirGrupo(itens), modo: 'resumo' }, ...itens.map((r, i) => ({ reg: r, modo: 'sub', n: i + 1 }))]
+                                                        : [{ reg: itens[0], modo: 'unico' }];
+                                                    return (
+                                                        <React.Fragment key={itens[0].id}>
+                                                        {linhas.map((l) => {
+                                                            const reg = l.reg;
+                                                            const sub = l.modo === 'sub';
+                                                            const resumo = l.modo === 'resumo';
+                                                            return (
+                                                    <tr key={sub ? reg.id : 'g' + reg.id} className={resumo ? 'bg-indigo-50' : sub ? 'bg-white' : (gi % 2 === 0 ? 'bg-white' : 'bg-gray-50')} style={sub ? {borderLeft:'4px solid #818cf8'} : resumo ? {borderLeft:'4px solid #4f46e5'} : undefined}>
+                                                        <td className={sub ? 'px-3 py-2 text-xs text-gray-600' : 'px-3 py-2 font-bold text-gray-800'} style={sub ? {paddingLeft:'24px'} : undefined}>{sub ? '↳ Ocorrência ' + l.n : reg.nome}</td>
+                                                        <td className="px-3 py-2 text-center text-gray-600">{sub ? '' : reg.matricula}</td>
+                                                        <td className="px-3 py-2 text-center text-gray-600">{sub ? '' : reg.cargo}</td>
                                                         <td className="px-3 py-2 text-center font-bold text-indigo-600">{reg.tipo || '-'}</td>
                                                         <td className="px-3 py-2 text-center font-bold text-orange-600">{reg.feedbackNegativo || '-'}</td>
                                                         <td className="px-3 py-2 text-center font-bold text-red-600">{reg.advertencia || '-'}</td>
@@ -11555,11 +11636,15 @@
                                                             <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${reg.grau === 'Grave' ? 'bg-red-100 text-red-700' : reg.grau === 'Leve' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{reg.grau || '-'}</span>
                                                         </td>
                                                         {adCiclo.length > 0 && <td className="px-3 py-2 text-center font-bold text-yellow-500">
-                                                            {adCiclo.some(a => a.colaboradorId === reg.colaboradorId) ? '🏆' : '—'}
+                                                            {sub ? '' : (adCiclo.some(a => a.colaboradorId === reg.colaboradorId) ? '🏆' : '—')}
                                                         </td>}
-                                                        <td className="px-3 py-2 text-xs text-gray-600">{reg.observacoes || '-'}</td>
+                                                        <td className="px-3 py-2 text-xs text-gray-600">{resumo ? <span className="font-bold text-indigo-700">Total do ciclo — detalhes abaixo</span> : (reg.observacoes || '-')}</td>
                                                     </tr>
-                                                ))}
+                                                            );
+                                                        })}
+                                                        </React.Fragment>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>
@@ -12133,29 +12218,44 @@
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
-                                        {[...registros].sort((a, b) => a.nome.trim().toLowerCase().localeCompare(b.nome.trim().toLowerCase(), 'pt-BR')).map((reg, idx) => (
-                                            <tr key={reg.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                                <td className="px-4 py-3 font-bold text-gray-800" style={{textTransform:'none'}}>{reg.nome}</td>
-                                                <td className="px-4 py-3 text-center">{reg.matricula}</td>
-                                                <td className="px-4 py-3 text-center">{reg.cargo}</td>
-                                                <td className="px-4 py-3 text-center font-bold text-indigo-600">{reg.tipo || '-'}</td>
-                                                <td className="px-4 py-3 text-center">{reg.setor}</td>
+                                        {agruparRegistros([...registros].sort((a, b) => a.nome.trim().toLowerCase().localeCompare(b.nome.trim().toLowerCase(), 'pt-BR'))).map((itens, gi) => {
+                                            const multi = itens.length > 1;
+                                            const linhas = multi
+                                                ? [{ reg: resumirGrupo(itens), modo: 'resumo' }, ...itens.map((r, i) => ({ reg: r, modo: 'sub', n: i + 1 }))]
+                                                : [{ reg: itens[0], modo: 'unico' }];
+                                            return (
+                                                <React.Fragment key={itens[0].id}>
+                                                {linhas.map((l) => {
+                                                    const reg = l.reg;
+                                                    const sub = l.modo === 'sub';
+                                                    const resumo = l.modo === 'resumo';
+                                                    return (
+                                            <tr key={sub ? reg.id : 'g' + reg.id} className={resumo ? 'bg-indigo-50' : sub ? 'bg-white' : (gi % 2 === 0 ? 'bg-white' : 'bg-gray-50')} style={sub ? {borderLeft:'4px solid #818cf8'} : resumo ? {borderLeft:'4px solid #4f46e5'} : undefined}>
+                                                <td className={sub ? 'px-4 py-2 text-sm text-gray-600' : 'px-4 py-3 font-bold text-gray-800'} style={sub ? {paddingLeft:'32px'} : {textTransform:'none'}}>{sub ? '↳ Ocorrência ' + l.n : reg.nome}</td>
+                                                <td className="px-4 py-3 text-center">{sub ? '' : reg.matricula}</td>
+                                                <td className="px-4 py-3 text-center">{sub ? '' : reg.cargo}</td>
+                                                <td className={'px-4 py-3 text-center font-bold ' + (resumo ? 'text-indigo-800' : 'text-indigo-600')}>{reg.tipo || '-'}</td>
+                                                <td className="px-4 py-3 text-center">{sub ? '' : reg.setor}</td>
                                                 <td className="px-4 py-3 text-center font-bold text-orange-600">{reg.feedbackNegativo || '-'}</td>
                                                 <td className="px-4 py-3 text-center font-bold text-red-600">{reg.advertencia || '-'}</td>
                                                 <td className="px-4 py-3 text-center font-bold text-blue-600">{reg.atestados || '-'}</td>
                                                 <td className="px-4 py-3 text-center font-bold text-yellow-600">{reg.atrasos || '-'}</td>
                                                 <td className="px-4 py-3 text-center font-bold text-purple-600">{reg.falha || '-'}</td>
                                                 <td className="px-4 py-3 text-center font-bold">{reg.grau || '-'}</td>
-                                                <td className="px-4 py-3 text-sm">{reg.observacoes || '-'}</td>
+                                                <td className="px-4 py-3 text-sm">{resumo ? <span className="text-xs font-bold text-indigo-700">Total do ciclo — detalhes abaixo</span> : (reg.observacoes || '-')}</td>
                                                 <td className="px-4 py-3 text-center">
                                                     <div className="flex gap-1 justify-center">
+                                                        {!sub && (
                                                         <button
-                                                            onClick={() => adicionarOutroLancamento(reg)}
-                                                            title="Adicionar outro lançamento para este colaborador"
+                                                            onClick={() => adicionarOutroLancamento(itens[0])}
+                                                            title="Adicionar outra ocorrência para este colaborador"
                                                             className="bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded font-bold text-xs"
                                                         >
                                                             ➕
                                                         </button>
+                                                        )}
+                                                        {!resumo && (
+                                                        <>
                                                         <button
                                                             onClick={() => iniciarEdicao(reg)}
                                                             className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded font-bold text-xs"
@@ -12168,10 +12268,16 @@
                                                         >
                                                             🗑️
                                                         </button>
+                                                        </>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
-                                        ))}
+                                                    );
+                                                })}
+                                                </React.Fragment>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -12241,10 +12347,21 @@
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200">
-                                                    {avaliacao.registros.map((reg) => (
-                                                        <tr key={reg.id} className="bg-white">
-                                                            <td className="px-2 py-2 font-bold">{reg.nome}</td>
-                                                            <td className="px-2 py-2 text-center">{reg.matricula}</td>
+                                                    {agruparRegistros(avaliacao.registros).map((itens) => {
+                                                        const multi = itens.length > 1;
+                                                        const linhas = multi
+                                                            ? [{ reg: resumirGrupo(itens), modo: 'resumo' }, ...itens.map((r, i) => ({ reg: r, modo: 'sub', n: i + 1 }))]
+                                                            : [{ reg: itens[0], modo: 'unico' }];
+                                                        return (
+                                                            <React.Fragment key={itens[0].id}>
+                                                            {linhas.map((l) => {
+                                                                const reg = l.reg;
+                                                                const sub = l.modo === 'sub';
+                                                                const resumo = l.modo === 'resumo';
+                                                                return (
+                                                        <tr key={sub ? reg.id : 'g' + reg.id} className={resumo ? 'bg-indigo-50' : 'bg-white'} style={sub ? {borderLeft:'4px solid #818cf8'} : resumo ? {borderLeft:'4px solid #4f46e5'} : undefined}>
+                                                            <td className={sub ? 'px-2 py-2 text-xs text-gray-600' : 'px-2 py-2 font-bold'} style={sub ? {paddingLeft:'20px'} : undefined}>{sub ? '↳ Ocorrência ' + l.n + (reg.tipo ? ' — ' + reg.tipo : '') : reg.nome}</td>
+                                                            <td className="px-2 py-2 text-center">{sub ? '' : reg.matricula}</td>
                                                             <td className="px-2 py-2 text-center font-bold text-orange-600">{reg.feedbackNegativo || '-'}</td>
                                                             <td className="px-2 py-2 text-center font-bold text-red-600">{reg.advertencia || '-'}</td>
                                                             <td className="px-2 py-2 text-center font-bold text-blue-600">{reg.atestados || '-'}</td>
@@ -12252,11 +12369,15 @@
                                                             <td className="px-2 py-2 text-center font-bold text-purple-600">{reg.falha || '-'}</td>
                                                             <td className="px-2 py-2 text-center font-bold">{reg.grau || '-'}</td>
                                                             <td className="px-2 py-2 text-center font-bold text-yellow-600">
-                                                                {(avaliacao.atitudeDono || atitudeDono.filter(a => a.ciclo === avaliacao.periodo)).some(a => a.colaboradorId === reg.colaboradorId) ? '🏆' : '—'}
+                                                                {sub ? '' : ((avaliacao.atitudeDono || atitudeDono.filter(a => a.ciclo === avaliacao.periodo)).some(a => a.colaboradorId === reg.colaboradorId) ? '🏆' : '—')}
                                                             </td>
-                                                            <td className="px-2 py-2 text-xs">{reg.observacoes || '-'}</td>
+                                                            <td className="px-2 py-2 text-xs">{resumo ? <span className="font-bold text-indigo-700">{itens.length} ocorrências — detalhes abaixo</span> : (reg.observacoes || '-')}</td>
                                                         </tr>
-                                                    ))}
+                                                                );
+                                                            })}
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
                                         </div>
