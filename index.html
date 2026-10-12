@@ -635,30 +635,8 @@
         document.getElementById('btnMaximize').textContent = '\u29C1';
         applyMaximizeStyles(true);
 
-        // Entra em tela cheia real assim que o usuario entrar na ferramenta.
-        // Os navegadores so permitem tela cheia apos uma acao do usuario (clique/tecla/toque),
-        // entao tentamos ao carregar e, se bloqueado, entramos no primeiro clique/tecla (ex.: login).
-        (function autoTelaCheia() {
-            const el = document.documentElement;
-            const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-            function emTelaCheia() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
-            function entrar() {
-                if (emTelaCheia() || !req) return true;
-                try {
-                    const r = req.call(el);
-                    if (r && r.catch) r.catch(() => {});
-                } catch (e) {}
-                return false;
-            }
-            function aoInteragir(ev) {
-                // Nao interfere no botao de maximizar/restaurar
-                if (ev && ev.target && ev.target.closest && ev.target.closest('#btnMaximize')) return;
-                entrar();
-                ['pointerdown', 'keydown', 'touchend'].forEach(t => document.removeEventListener(t, aoInteragir, true));
-            }
-            entrar();
-            ['pointerdown', 'keydown', 'touchend'].forEach(t => document.addEventListener(t, aoInteragir, true));
-        })();
+        // (Removido) Entrada automática em tela cheia real do navegador.
+        // O layout em largura total continua via CSS; a tela cheia real só ocorre ao clicar no botão de maximizar ou F11.
     </script>
 
     <script type="text/plain" id="appSource">
@@ -10960,11 +10938,8 @@
                     return;
                 }
 
-                // Verificar se já existe registro para este colaborador
-                if (registros.some(r => r.colaboradorId === form.colaboradorId)) {
-                    alert('⚠️ Este colaborador já foi adicionado! Use o botão Editar para modificar.');
-                    return;
-                }
+                // Permite mais de um lançamento para o mesmo colaborador no ciclo
+                const qtdAnterior = registros.filter(r => r.colaboradorId === form.colaboradorId).length;
 
                 const colaborador = getColaborador(form.colaboradorId);
                 const cargoFinal = form.cargo || colaborador.cargo;
@@ -10991,7 +10966,7 @@
 
                 setRegistros([...registros, novoRegistro]);
                 limparFormulario();
-                alert('✅ Colaborador adicionado!');
+                alert(qtdAnterior > 0 ? `✅ Novo lançamento adicionado! Este colaborador agora tem ${qtdAnterior + 1} lançamentos no ciclo.` : '✅ Colaborador adicionado!');
             };
 
             const limparFormulario = () => {
@@ -11030,6 +11005,28 @@
                         formRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }
                 }, 50);
+            };
+
+            const adicionarOutroLancamento = (registro) => {
+                setEditando(null);
+                setForm({
+                    colaboradorId: registro.colaboradorId,
+                    cargo: registro.cargo,
+                    tipo: '',
+                    feedbackNegativo: 0,
+                    advertencia: 0,
+                    atestados: 0,
+                    atrasos: 0,
+                    falha: 0,
+                    grau: '',
+                    observacoes: ''
+                });
+                setPainelAberto('form');
+                setTimeout(() => {
+                    if (formRef.current) {
+                        formRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }, 80);
             };
 
             const salvarEdicao = () => {
@@ -11727,6 +11724,11 @@
                                             <option key={c.id} value={c.id}>{c.nome}</option>
                                         ))}
                                 </select>
+                                {!editando && form.colaboradorId && registros.filter(r => r.colaboradorId === form.colaboradorId).length > 0 && (
+                                    <p className="text-sm font-bold text-indigo-700 mt-2">
+                                        ℹ️ Este colaborador já tem {registros.filter(r => r.colaboradorId === form.colaboradorId).length} lançamento(s) neste ciclo. O que você preencher será adicionado como mais um lançamento.
+                                    </p>
+                                )}
                             </div>
 
                             {colaboradorSelecionado && (
@@ -11883,7 +11885,7 @@
                                     onClick={adicionarRegistro}
                                     className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold flex items-center justify-center gap-2"
                                 >
-                                    <span className="text-xl">✅</span> Adicionar Colaborador
+                                    <span className="text-xl">✅</span> {form.colaboradorId && registros.some(r => r.colaboradorId === form.colaboradorId) ? 'Adicionar Novo Lançamento' : 'Adicionar Colaborador'}
                                 </button>
                             )}
                         </div>
@@ -12147,6 +12149,13 @@
                                                 <td className="px-4 py-3 text-sm">{reg.observacoes || '-'}</td>
                                                 <td className="px-4 py-3 text-center">
                                                     <div className="flex gap-1 justify-center">
+                                                        <button
+                                                            onClick={() => adicionarOutroLancamento(reg)}
+                                                            title="Adicionar outro lançamento para este colaborador"
+                                                            className="bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded font-bold text-xs"
+                                                        >
+                                                            ➕
+                                                        </button>
                                                         <button
                                                             onClick={() => iniciarEdicao(reg)}
                                                             className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded font-bold text-xs"
