@@ -6896,6 +6896,23 @@
 
             const proximoDomingo = gerarEscalaAnual.find(d => d.data >= hojeStr) || null;
 
+            // ── Sextas-feira (regra 5x2): quem trabalha o domingo folga a sexta da mesma semana (domingo + 5 dias);
+            //    a outra turma trabalha a sexta. Alterna junto com os domingos. ──
+            const gerarEscalaSextas = useMemo(() => {
+                return gerarEscalaAnual.map(dom => {
+                    const d = new Date(dom.data + 'T12:00:00');
+                    d.setDate(d.getDate() + 5);
+                    const dataStr = d.toISOString().slice(0, 10);
+                    if (dataStr.slice(0, 4) !== dom.data.slice(0, 4)) return null;
+                    return { data: dataStr, turma: dom.turma === '1' ? '2' : '1', tipo: 'sexta', turmaFolga: dom.turma };
+                }).filter(Boolean);
+            }, [gerarEscalaAnual]);
+            const gerarEscalaCompleta = useMemo(() =>
+                [...gerarEscalaAnual.map(d => ({ ...d, tipo: 'domingo' })), ...gerarEscalaSextas]
+                    .sort((a, b) => a.data.localeCompare(b.data)),
+            [gerarEscalaAnual, gerarEscalaSextas]);
+            const proximaSexta = gerarEscalaSextas.find(d => d.data >= hojeStr) || null;
+
             const getColabsDomingo = (data, turma) => {
                 // Filtra apenas IDs de colaboradores que ainda existem na lista ativa
                 const filtrarAtivos = (ids) => (ids || []).filter(id =>
@@ -6932,7 +6949,7 @@
             useEffect(() => {
                 if (!domingoExpandido) return;
                 const data = domingoExpandido;
-                const domObj = gerarEscalaAnual.find(d => d.data === data);
+                const domObj = gerarEscalaCompleta.find(d => d.data === data);
                 if (!domObj) return;
                 const turma = domObj.turma;
                 const colabIds = getColabsDomingo(data, turma);
@@ -7093,7 +7110,7 @@
             };
 
             const excluirRegistroHistorico = (chave) => {
-                if (!confirm('⚠️ Excluir o registro de presenças deste domingo?')) return;
+                if (!confirm('⚠️ Excluir o registro de presenças deste dia?')) return;
                 setHistoricoPresencas(prev => {
                     const novo = { ...prev };
                     delete novo[chave];
@@ -7159,10 +7176,10 @@
             // ── Filtros ──
             const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
             const domingosFiltrados = useMemo(() => {
-                let lista = apenasProximos ? gerarEscalaAnual.filter(d => d.data >= hojeStr) : gerarEscalaAnual;
+                let lista = apenasProximos ? gerarEscalaCompleta.filter(d => d.data >= hojeStr) : gerarEscalaCompleta;
                 if (filtroMes !== 'todos') lista = lista.filter(d => parseInt(d.data.slice(5,7)) - 1 === parseInt(filtroMes));
                 return lista;
-            }, [gerarEscalaAnual, apenasProximos, filtroMes, hojeStr]);
+            }, [gerarEscalaCompleta, apenasProximos, filtroMes, hojeStr]);
 
             // Histórico filtrado e ordenado
             const historicoOrdenado = useMemo(() => {
@@ -7264,19 +7281,19 @@
                                         <option value="todos">Todos os meses</option>
                                         {meses.map((m,i) => <option key={i} value={i}>{m}</option>)}
                                     </select>
-                                    <span style={{marginLeft:'auto',fontSize:'12px',fontWeight:'700',color:'#94a3b8'}}>{domingosFiltrados.length} domingo(s)</span>
+                                    <span style={{marginLeft:'auto',fontSize:'12px',fontWeight:'700',color:'#94a3b8'}}>{domingosFiltrados.length} dia(s)</span>
                                 </div>
 
                                 {/* Lista de domingos */}
                                 <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
                                     {domingosFiltrados.length === 0 && (
-                                        <div style={{textAlign:'center',padding:'40px',color:'#94a3b8',fontWeight:'700'}}>Nenhum domingo encontrado com os filtros atuais.</div>
+                                        <div style={{textAlign:'center',padding:'40px',color:'#94a3b8',fontWeight:'700'}}>Nenhum dia encontrado com os filtros atuais.</div>
                                     )}
                                     {domingosFiltrados.map((dom) => {
                                         const cor = corTurma(dom.turma);
                                         const nomeTurma = dom.turma === '1' ? turmas.turma1.nome : turmas.turma2.nome;
                                         const colabIds = getColabsDomingo(dom.data, dom.turma);
-                                        const isProximo = dom.data === proximoDomingo?.data;
+                                        const isProximo = dom.tipo === 'sexta' ? dom.data === proximaSexta?.data : dom.data === proximoDomingo?.data;
                                         const isExpandido = domingoExpandido === dom.data;
                                         const isEditando = editandoDomingo === dom.data;
                                         const chave = `${dom.data}_T${dom.turma}`;
@@ -7298,6 +7315,7 @@
                                                     <div style={{flex:1}}>
                                                         <div style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}>
                                                             <span style={{fontSize:'13px',fontWeight:'800',color:cor.txt,background:cor.badge,padding:'2px 10px',borderRadius:'20px'}}>{dom.turma==='1'?'🔵':'🟣'} {nomeTurma}</span>
+                                                            {dom.tipo === 'sexta' && <span style={{fontSize:'11px',fontWeight:'800',background:'#ecfeff',color:'#0e7490',padding:'2px 8px',borderRadius:'20px'}}>🗓️ Sexta · {dom.turmaFolga==='1'?turmas.turma1.nome:turmas.turma2.nome} folga</span>}
                                                             {isProximo && <span style={{fontSize:'11px',fontWeight:'800',background:'#fef9c3',color:'#854d0e',padding:'2px 8px',borderRadius:'20px'}}>📍 Próximo</span>}
                                                             {historico && <span style={{fontSize:'11px',fontWeight:'800',background:'#dcfce7',color:'#15803d',padding:'2px 8px',borderRadius:'20px'}}>✅ Salvo</span>}
                                                             {override && <span style={{fontSize:'11px',fontWeight:'800',background:'#fff7ed',color:'#c2410c',padding:'2px 8px',borderRadius:'20px'}}>✏️ Editado</span>}
@@ -7320,7 +7338,7 @@
                                                         {/* Modo edição manual */}
                                                         {isEditando ? (
                                                             <div style={{background:'white',borderRadius:'12px',border:`1.5px solid ${cor.borda}`,padding:'14px',marginBottom:'12px'}}>
-                                                                <div style={{fontWeight:'800',fontSize:'13px',color:'#1e293b',marginBottom:'10px'}}>✏️ Editar colaboradores para este domingo</div>
+                                                                <div style={{fontWeight:'800',fontSize:'13px',color:'#1e293b',marginBottom:'10px'}}>✏️ Editar colaboradores para {dom.tipo === 'sexta' ? 'esta sexta' : 'este domingo'}</div>
                                                                 <div style={{display:'flex',flexDirection:'column',gap:'6px',maxHeight:'200px',overflowY:'auto',marginBottom:'12px'}}>
                                                                     {colaboradores.filter(c=>c.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).map(c => (
                                                                         <label key={c.id} style={{display:'flex',alignItems:'center',gap:'8px',padding:'7px 10px',borderRadius:'8px',background:editColabsOverride.includes(String(c.id))?cor.badge:'#f8fafc',cursor:'pointer',fontWeight:'600',fontSize:'13px',color:'#374151'}}>
@@ -7726,7 +7744,7 @@
                                 {/* Cards resumo */}
                                 <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'12px'}}>
                                     {[
-                                        { label:'Domingos Registrados', val: totalRegistros, icon:'📅', cor:'#3b82f6', bg:'#eff6ff', borda:'#bfdbfe' },
+                                        { label:'Dias Registrados', val: totalRegistros, icon:'📅', cor:'#3b82f6', bg:'#eff6ff', borda:'#bfdbfe' },
                                         { label:'Total Presenças', val: totalPresentes, icon:'✅', cor:'#15803d', bg:'#f0fdf4', borda:'#86efac' },
                                         { label:'Total Ausências', val: totalAusentes, icon:'❌', cor:'#dc2626', bg:'#fef2f2', borda:'#fecaca' },
                                         { label:'Taxa Presença', val: taxaGeral === '—' ? '—' : taxaGeral+'%', icon:'📊', cor:'#7c3aed', bg:'#faf5ff', borda:'#ddd6fe' },
