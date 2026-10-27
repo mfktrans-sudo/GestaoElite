@@ -6757,6 +6757,7 @@
 
             // ── Estado principal de navegação ──
             const [subAba, setSubAba] = useState('escala_anual'); // 'escala_anual' | 'gestao_turmas' | 'afastamentos' | 'historico'
+            const [simSemanas, setSimSemanas] = useState(8); // Simulação 5x2: nº de semanas exibidas
 
             // ── Estado de Turmas (persistido) ──
             const [turmas, setTurmas] = useState(() => {
@@ -7223,6 +7224,7 @@
                             ['gestao_turmas','👥 Gestão de Turmas'],
                             ['historico','📊 Histórico'],
                             ['afastamentos','🏥 Afastamentos'],
+                            ['simulacao_5x2','🧪 Simulação 5x2'],
                         ].map(([k,n]) => (
                             <button key={k} onClick={() => setSubAba(k)}
                                 style={{padding:'9px 20px',borderRadius:'10px',fontWeight:'800',fontSize:'13px',border:'none',cursor:'pointer',transition:'all .15s',background:subAba===k?'white':'transparent',color:subAba===k?'#3b82f6':'#64748b',boxShadow:subAba===k?'0 2px 8px rgba(0,0,0,0.10)':'none',whiteSpace:'nowrap'}}>
@@ -7928,6 +7930,137 @@
                                         })}
                                     </div>
                                 )}
+                            </div>
+                        );
+                    })()}
+
+                    {/* ═══════════════════════════════════════════════════
+                        SUB-ABA: SIMULAÇÃO 5x2 (somente visualização — não altera a escala)
+                    ═══════════════════════════════════════════════════ */}
+                    {subAba === 'simulacao_5x2' && (() => {
+                        const fmtCurta = (ds) => new Date(ds + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                        const cor = (t) => t === '1' ? '#3b82f6' : '#8b5cf6';
+                        const nomeTurma = (t) => (t === '1' ? turmas.turma1.nome : turmas.turma2.nome);
+                        const ativos = (ids) => (ids || []).filter(id => colaboradores.some(c => String(c.id) === String(id)));
+                        const idsT1 = ativos(turmas.turma1.colaboradoresIds);
+                        const idsT2 = ativos(turmas.turma2.colaboradoresIds);
+                        const totalEquipe = idsT1.length + idsT2.length;
+
+                        const semanas = gerarEscalaAnual.filter(d => d.data >= hojeStr).slice(0, simSemanas).map(dom => {
+                            const dt = new Date(dom.data + 'T12:00:00'); dt.setDate(dt.getDate() + 5);
+                            const sexData = dt.toISOString().slice(0, 10);
+                            const turmaSex = dom.turma === '1' ? '2' : '1';
+                            const idsDom = ativos(dom.turma === '1' ? idsT1 : idsT2);
+                            const idsSex = ativos(turmaSex === '1' ? idsT1 : idsT2);
+                            return {
+                                domData: dom.data, turmaDom: dom.turma, idsDom,
+                                dispDom: idsDom.filter(id => !estaAfastado(id, dom.data)).length,
+                                sexData, turmaSex, idsSex,
+                                dispSex: idsSex.filter(id => !estaAfastado(id, sexData)).length
+                            };
+                        });
+
+                        const porColab = [...idsT1.map(id => ({ id, turma: '1' })), ...idsT2.map(id => ({ id, turma: '2' }))].map(c => {
+                            const dom = semanas.filter(s => s.idsDom.includes(c.id)).length;
+                            const sex = semanas.filter(s => s.idsSex.includes(c.id)).length;
+                            return { ...c, dom, sex, folgaDom: semanas.length - dom, folgaSex: semanas.length - sex };
+                        });
+
+                        const pct = (n) => totalEquipe ? Math.round((n / totalEquipe) * 100) : 0;
+                        const card = (titulo, valor, sub, c) => (
+                            <div style={{flex:'1 1 170px',background:'white',border:'1.5px solid #e2e8f0',borderTop:`4px solid ${c}`,borderRadius:'14px',padding:'14px 16px'}}>
+                                <div style={{fontSize:'11px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',letterSpacing:'.06em'}}>{titulo}</div>
+                                <div style={{fontSize:'28px',fontWeight:'900',color:'#1e293b',lineHeight:1.2}}>{valor}</div>
+                                <div style={{fontSize:'12px',color:'#94a3b8',fontWeight:'600'}}>{sub}</div>
+                            </div>
+                        );
+                        const th = {padding:'10px 12px',fontSize:'11px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',textAlign:'left',background:'#f8fafc',borderBottom:'1.5px solid #e2e8f0'};
+                        const td = {padding:'10px 12px',fontSize:'13px',borderBottom:'1px solid #f1f5f9',color:'#1e293b'};
+                        const chip = (t) => <span style={{background:cor(t),color:'white',fontSize:'11px',fontWeight:'800',padding:'2px 10px',borderRadius:'20px'}}>{nomeTurma(t)}</span>;
+
+                        return (
+                            <div style={{display:'flex',flexDirection:'column',gap:'16px'}}>
+                                <div style={{background:'white',borderRadius:'18px',border:'1.5px solid #e2e8f0',padding:'20px'}}>
+                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'10px'}}>
+                                        <div>
+                                            <div style={{fontSize:'18px',fontWeight:'900',color:'#1e293b'}}>🧪 Simulação da regra 5x2</div>
+                                            <div style={{fontSize:'13px',color:'#64748b',marginTop:'4px'}}>Metade da equipe trabalha na sexta e folga no domingo; a outra metade trabalha o domingo e folga na sexta. A cada semana as turmas se intercalam. Apenas visualização — nada é alterado na escala.</div>
+                                        </div>
+                                        <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
+                                            <span style={{fontSize:'12px',fontWeight:'800',color:'#64748b'}}>Semanas:</span>
+                                            {[4,8,12].map(n => (
+                                                <button key={n} onClick={() => setSimSemanas(n)}
+                                                    style={{padding:'6px 14px',borderRadius:'10px',border:'1.5px solid #e2e8f0',fontWeight:'800',fontSize:'12px',cursor:'pointer',background:simSemanas===n?'#3b82f6':'white',color:simSemanas===n?'white':'#64748b'}}>{n}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style={{display:'flex',gap:'12px',flexWrap:'wrap'}}>
+                                    {card('Equipe nas turmas', totalEquipe, 'colaboradores ativos', '#1e293b')}
+                                    {card(nomeTurma('1'), idsT1.length, 'colaboradores', cor('1'))}
+                                    {card(nomeTurma('2'), idsT2.length, 'colaboradores', cor('2'))}
+                                    {card('Efetivo por sexta', `${semanas[0] ? Math.min(...semanas.map(s => s.idsSex.length)) : 0}`, `${pct(semanas[0] ? Math.min(...semanas.map(s => s.idsSex.length)) : 0)}% da equipe`, '#f59e0b')}
+                                    {card('Efetivo por domingo', `${semanas[0] ? Math.min(...semanas.map(s => s.idsDom.length)) : 0}`, `${pct(semanas[0] ? Math.min(...semanas.map(s => s.idsDom.length)) : 0)}% da equipe`, '#10b981')}
+                                </div>
+
+                                {totalEquipe === 0 && (
+                                    <div style={{background:'#fffbeb',border:'1.5px solid #fcd34d',borderRadius:'14px',padding:'14px 18px',fontSize:'13px',fontWeight:'700',color:'#92400e'}}>
+                                        ⚠️ As turmas ainda não têm colaboradores. Monte-as em <strong>Gestão de Turmas</strong> para a simulação funcionar.
+                                    </div>
+                                )}
+
+                                <div style={{background:'white',borderRadius:'18px',border:'1.5px solid #e2e8f0',overflow:'hidden'}}>
+                                    <div style={{padding:'14px 18px',fontWeight:'900',fontSize:'15px',color:'#1e293b'}}>📆 Semana a semana</div>
+                                    <div style={{overflowX:'auto'}}>
+                                        <table style={{width:'100%',borderCollapse:'collapse'}}>
+                                            <thead><tr>
+                                                <th style={th}>Semana</th>
+                                                <th style={th}>Domingo — trabalha</th>
+                                                <th style={th}>Efetivo dom.</th>
+                                                <th style={th}>Sexta — trabalha</th>
+                                                <th style={th}>Efetivo sex.</th>
+                                                <th style={th}>Folga dom. / sex.</th>
+                                            </tr></thead>
+                                            <tbody>
+                                                {semanas.map(s => (
+                                                    <tr key={s.domData}>
+                                                        <td style={{...td,fontWeight:'800'}}>{fmtCurta(s.domData)} → {fmtCurta(s.sexData)}</td>
+                                                        <td style={td}>{fmtCurta(s.domData)} {chip(s.turmaDom)}</td>
+                                                        <td style={{...td,fontWeight:'800'}}>{s.dispDom}/{s.idsDom.length}</td>
+                                                        <td style={td}>{fmtCurta(s.sexData)} {chip(s.turmaSex)}</td>
+                                                        <td style={{...td,fontWeight:'800'}}>{s.dispSex}/{s.idsSex.length}</td>
+                                                        <td style={{...td,fontSize:'12px',color:'#64748b'}}>Dom.: {nomeTurma(s.turmaSex)} · Sex.: {nomeTurma(s.turmaDom)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div style={{padding:'10px 18px',fontSize:'11px',color:'#94a3b8',fontWeight:'600'}}>Efetivo = disponíveis/escalados (descontando férias e afastamentos cadastrados).</div>
+                                </div>
+
+                                <div style={{background:'white',borderRadius:'18px',border:'1.5px solid #e2e8f0',overflow:'hidden'}}>
+                                    <div style={{padding:'14px 18px',fontWeight:'900',fontSize:'15px',color:'#1e293b'}}>👤 Por colaborador (nas {semanas.length} semanas)</div>
+                                    <div style={{overflowX:'auto'}}>
+                                        <table style={{width:'100%',borderCollapse:'collapse'}}>
+                                            <thead><tr>
+                                                <th style={th}>Colaborador</th><th style={th}>Turma</th>
+                                                <th style={th}>Domingos trab.</th><th style={th}>Sextas trab.</th>
+                                                <th style={th}>Folgas dom.</th><th style={th}>Folgas sex.</th>
+                                            </tr></thead>
+                                            <tbody>
+                                                {porColab.map(c => (
+                                                    <tr key={c.id}>
+                                                        <td style={{...td,fontWeight:'700'}}>{getNomeColab(c.id)}</td>
+                                                        <td style={td}>{chip(c.turma)}</td>
+                                                        <td style={td}>{c.dom}</td><td style={td}>{c.sex}</td>
+                                                        <td style={td}>{c.folgaDom}</td><td style={td}>{c.folgaSex}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
                         );
                     })()}
