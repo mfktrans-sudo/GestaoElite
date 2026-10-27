@@ -6757,7 +6757,9 @@
 
             // ── Estado principal de navegação ──
             const [subAba, setSubAba] = useState('escala_anual'); // 'escala_anual' | 'gestao_turmas' | 'afastamentos' | 'historico'
-            const [simSemanas, setSimSemanas] = useState(8); // Simulação 5x2: nº de semanas exibidas
+            const [simMes, setSimMes] = useState(''); // Simulação 5x2: mês exibido (YYYY-MM); vazio = mês atual
+            const [simDiaSel, setSimDiaSel] = useState(null); // Simulação 5x2: dia clicado
+            const [simFiltro, setSimFiltro] = useState('todas'); // Simulação 5x2: 'todas' | '1' | '2'
 
             // ── Estado de Turmas (persistido) ──
             const [turmas, setTurmas] = useState(() => {
@@ -7935,132 +7937,140 @@
                     })()}
 
                     {/* ═══════════════════════════════════════════════════
-                        SUB-ABA: SIMULAÇÃO 5x2 (somente visualização — não altera a escala)
+                        SUB-ABA: SIMULAÇÃO 5x2 — calendário (somente visualização)
                     ═══════════════════════════════════════════════════ */}
                     {subAba === 'simulacao_5x2' && (() => {
-                        const fmtCurta = (ds) => new Date(ds + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
                         const cor = (t) => t === '1' ? '#3b82f6' : '#8b5cf6';
                         const nomeTurma = (t) => (t === '1' ? turmas.turma1.nome : turmas.turma2.nome);
-                        const ativos = (ids) => (ids || []).filter(id => colaboradores.some(c => String(c.id) === String(id)));
-                        const idsT1 = ativos(turmas.turma1.colaboradoresIds);
-                        const idsT2 = ativos(turmas.turma2.colaboradoresIds);
-                        const totalEquipe = idsT1.length + idsT2.length;
+                        const outra = (t) => t === '1' ? '2' : '1';
+                        const idsTurma = (t) => ((t === '1' ? turmas.turma1.colaboradoresIds : turmas.turma2.colaboradoresIds) || [])
+                            .filter(id => colaboradores.some(c => String(c.id) === String(id)));
+                        const mapa = {};
+                        gerarEscalaCompleta.forEach(d => { mapa[d.data] = d; });
 
-                        const semanas = gerarEscalaAnual.filter(d => d.data >= hojeStr).slice(0, simSemanas).map(dom => {
-                            const dt = new Date(dom.data + 'T12:00:00'); dt.setDate(dt.getDate() + 5);
-                            const sexData = dt.toISOString().slice(0, 10);
-                            const turmaSex = dom.turma === '1' ? '2' : '1';
-                            const idsDom = ativos(dom.turma === '1' ? idsT1 : idsT2);
-                            const idsSex = ativos(turmaSex === '1' ? idsT1 : idsT2);
-                            return {
-                                domData: dom.data, turmaDom: dom.turma, idsDom,
-                                dispDom: idsDom.filter(id => !estaAfastado(id, dom.data)).length,
-                                sexData, turmaSex, idsSex,
-                                dispSex: idsSex.filter(id => !estaAfastado(id, sexData)).length
-                            };
+                        const mesStr = simMes || hojeStr.slice(0, 7);
+                        const [ano, mes] = mesStr.split('-').map(Number);
+                        const mudarMes = (delta) => {
+                            const d = new Date(ano, mes - 1 + delta, 1);
+                            setSimMes(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+                            setSimDiaSel(null);
+                        };
+                        const nomeMes = new Date(ano, mes - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+                        const primeiroDow = new Date(ano, mes - 1, 1).getDay();
+                        const diasNoMes = new Date(ano, mes, 0).getDate();
+                        const celulas = [];
+                        for (let i = 0; i < primeiroDow; i++) celulas.push(null);
+                        for (let d = 1; d <= diasNoMes; d++) celulas.push(`${ano}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+
+                        const contagem = { '1': { trab: 0, folga: 0 }, '2': { trab: 0, folga: 0 } };
+                        celulas.forEach(ds => {
+                            if (ds && mapa[ds]) { contagem[mapa[ds].turma].trab++; contagem[outra(mapa[ds].turma)].folga++; }
                         });
 
-                        const porColab = [...idsT1.map(id => ({ id, turma: '1' })), ...idsT2.map(id => ({ id, turma: '2' }))].map(c => {
-                            const dom = semanas.filter(s => s.idsDom.includes(c.id)).length;
-                            const sex = semanas.filter(s => s.idsSex.includes(c.id)).length;
-                            return { ...c, dom, sex, folgaDom: semanas.length - dom, folgaSex: semanas.length - sex };
-                        });
+                        const renderCelula = (ds, i) => {
+                            if (!ds) return <div key={'v' + i} />;
+                            const info = mapa[ds];
+                            const dia = Number(ds.slice(8));
+                            const ehHoje = ds === hojeStr;
+                            if (!info) {
+                                return (
+                                    <div key={ds} style={{minHeight:'86px',background:'#f8fafc',border:'1.5px solid #f1f5f9',borderRadius:'10px',padding:'6px 8px',color:'#cbd5e1',fontWeight:'800',fontSize:'13px',outline:ehHoje?'2px solid #1e293b':'none'}}>{dia}</div>
+                                );
+                            }
+                            const t = info.turma, f = outra(t);
+                            const sel = simDiaSel === ds;
+                            const tag = (txt, bg, fg) => (
+                                <div style={{background:bg,color:fg,fontSize:'10px',fontWeight:'800',padding:'3px 6px',borderRadius:'6px',marginTop:'3px',lineHeight:1.2}}>{txt}</div>
+                            );
+                            let corpo, fundo = 'white';
+                            if (simFiltro === 'todas') {
+                                corpo = (<>
+                                    {tag(`✅ ${nomeTurma(t)} trabalha`, cor(t), 'white')}
+                                    {tag(`🏖️ ${nomeTurma(f)} folga`, '#f1f5f9', '#64748b')}
+                                </>);
+                            } else {
+                                const trabalha = simFiltro === t;
+                                fundo = trabalha ? '#ecfdf5' : '#fffbeb';
+                                corpo = trabalha ? tag('✅ TRABALHA', '#10b981', 'white') : tag('🏖️ FOLGA', '#f59e0b', 'white');
+                            }
+                            return (
+                                <div key={ds} onClick={() => setSimDiaSel(sel ? null : ds)}
+                                    style={{minHeight:'86px',background:fundo,border:`2px solid ${sel ? '#1e293b' : '#e2e8f0'}`,borderRadius:'10px',padding:'6px 8px',cursor:'pointer',outline:ehHoje?'2px solid #f59e0b':'none',outlineOffset:'1px'}}>
+                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                                        <span style={{fontWeight:'900',fontSize:'14px',color:'#1e293b'}}>{dia}</span>
+                                        <span style={{fontSize:'10px',fontWeight:'800',color:'#94a3b8'}}>{info.tipo === 'domingo' ? 'DOM' : 'SEX'}</span>
+                                    </div>
+                                    {corpo}
+                                </div>
+                            );
+                        };
 
-                        const pct = (n) => totalEquipe ? Math.round((n / totalEquipe) * 100) : 0;
-                        const card = (titulo, valor, sub, c) => (
-                            <div style={{flex:'1 1 170px',background:'white',border:'1.5px solid #e2e8f0',borderTop:`4px solid ${c}`,borderRadius:'14px',padding:'14px 16px'}}>
-                                <div style={{fontSize:'11px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',letterSpacing:'.06em'}}>{titulo}</div>
-                                <div style={{fontSize:'28px',fontWeight:'900',color:'#1e293b',lineHeight:1.2}}>{valor}</div>
-                                <div style={{fontSize:'12px',color:'#94a3b8',fontWeight:'600'}}>{sub}</div>
-                            </div>
-                        );
-                        const th = {padding:'10px 12px',fontSize:'11px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',textAlign:'left',background:'#f8fafc',borderBottom:'1.5px solid #e2e8f0'};
-                        const td = {padding:'10px 12px',fontSize:'13px',borderBottom:'1px solid #f1f5f9',color:'#1e293b'};
-                        const chip = (t) => <span style={{background:cor(t),color:'white',fontSize:'11px',fontWeight:'800',padding:'2px 10px',borderRadius:'20px'}}>{nomeTurma(t)}</span>;
+                        const infoSel = simDiaSel ? mapa[simDiaSel] : null;
+                        const listaPessoas = (t) => {
+                            const ids = idsTurma(t);
+                            if (ids.length === 0) return <div style={{fontSize:'12px',color:'#94a3b8'}}>Sem colaboradores nesta turma.</div>;
+                            return ids.map(id => {
+                                const af = estaAfastado(id, simDiaSel);
+                                return <div key={id} style={{fontSize:'13px',fontWeight:'600',color:'#1e293b',padding:'3px 0'}}>{getNomeColab(id)}{af ? <span style={{marginLeft:'6px',fontSize:'11px',color:'#ea580c',fontWeight:'800'}}>🏥 {af.tipo || 'Afastado'}</span> : null}</div>;
+                            });
+                        };
 
                         return (
                             <div style={{display:'flex',flexDirection:'column',gap:'16px'}}>
                                 <div style={{background:'white',borderRadius:'18px',border:'1.5px solid #e2e8f0',padding:'20px'}}>
-                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'10px'}}>
-                                        <div>
-                                            <div style={{fontSize:'18px',fontWeight:'900',color:'#1e293b'}}>🧪 Simulação da regra 5x2</div>
-                                            <div style={{fontSize:'13px',color:'#64748b',marginTop:'4px'}}>Metade da equipe trabalha na sexta e folga no domingo; a outra metade trabalha o domingo e folga na sexta. A cada semana as turmas se intercalam. Apenas visualização — nada é alterado na escala.</div>
-                                        </div>
-                                        <div style={{display:'flex',gap:'6px',alignItems:'center'}}>
-                                            <span style={{fontSize:'12px',fontWeight:'800',color:'#64748b'}}>Semanas:</span>
-                                            {[4,8,12].map(n => (
-                                                <button key={n} onClick={() => setSimSemanas(n)}
-                                                    style={{padding:'6px 14px',borderRadius:'10px',border:'1.5px solid #e2e8f0',fontWeight:'800',fontSize:'12px',cursor:'pointer',background:simSemanas===n?'#3b82f6':'white',color:simSemanas===n?'white':'#64748b'}}>{n}</button>
-                                            ))}
-                                        </div>
+                                    <div style={{fontSize:'18px',fontWeight:'900',color:'#1e293b'}}>🧪 Simulação da regra 5x2</div>
+                                    <div style={{fontSize:'13px',color:'#64748b',marginTop:'4px'}}>Metade da equipe trabalha na sexta e folga no domingo; a outra metade faz o contrário, e as turmas se alternam a cada semana. Clique em um dia para ver quem trabalha e quem folga. Apenas visualização — não altera a escala.</div>
+                                    <div style={{display:'flex',gap:'6px',alignItems:'center',flexWrap:'wrap',marginTop:'14px'}}>
+                                        <span style={{fontSize:'12px',fontWeight:'800',color:'#64748b'}}>Ver:</span>
+                                        {[['todas','Todas as turmas'],['1',nomeTurma('1')],['2',nomeTurma('2')]].map(([k, n]) => (
+                                            <button key={k} onClick={() => setSimFiltro(k)}
+                                                style={{padding:'6px 14px',borderRadius:'10px',border:'1.5px solid #e2e8f0',fontWeight:'800',fontSize:'12px',cursor:'pointer',background:simFiltro===k?(k==='todas'?'#1e293b':cor(k)):'white',color:simFiltro===k?'white':'#64748b'}}>{n}</button>
+                                        ))}
                                     </div>
                                 </div>
 
-                                <div style={{display:'flex',gap:'12px',flexWrap:'wrap'}}>
-                                    {card('Equipe nas turmas', totalEquipe, 'colaboradores ativos', '#1e293b')}
-                                    {card(nomeTurma('1'), idsT1.length, 'colaboradores', cor('1'))}
-                                    {card(nomeTurma('2'), idsT2.length, 'colaboradores', cor('2'))}
-                                    {card('Efetivo por sexta', `${semanas[0] ? Math.min(...semanas.map(s => s.idsSex.length)) : 0}`, `${pct(semanas[0] ? Math.min(...semanas.map(s => s.idsSex.length)) : 0)}% da equipe`, '#f59e0b')}
-                                    {card('Efetivo por domingo', `${semanas[0] ? Math.min(...semanas.map(s => s.idsDom.length)) : 0}`, `${pct(semanas[0] ? Math.min(...semanas.map(s => s.idsDom.length)) : 0)}% da equipe`, '#10b981')}
+                                <div style={{background:'white',borderRadius:'18px',border:'1.5px solid #e2e8f0',padding:'18px'}}>
+                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px',flexWrap:'wrap',gap:'8px'}}>
+                                        <button onClick={() => mudarMes(-1)} style={{padding:'6px 14px',borderRadius:'10px',border:'1.5px solid #e2e8f0',background:'white',fontWeight:'900',cursor:'pointer'}}>◀</button>
+                                        <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+                                            <span style={{fontSize:'17px',fontWeight:'900',color:'#1e293b',textTransform:'capitalize'}}>{nomeMes}</span>
+                                            <button onClick={() => { setSimMes(hojeStr.slice(0, 7)); setSimDiaSel(null); }} style={{padding:'4px 12px',borderRadius:'10px',border:'1.5px solid #e2e8f0',background:'white',fontWeight:'800',fontSize:'11px',color:'#64748b',cursor:'pointer'}}>Hoje</button>
+                                        </div>
+                                        <button onClick={() => mudarMes(1)} style={{padding:'6px 14px',borderRadius:'10px',border:'1.5px solid #e2e8f0',background:'white',fontWeight:'900',cursor:'pointer'}}>▶</button>
+                                    </div>
+
+                                    <div style={{display:'grid',gridTemplateColumns:'repeat(7, minmax(0, 1fr))',gap:'6px'}}>
+                                        {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(n => (
+                                            <div key={n} style={{textAlign:'center',fontSize:'11px',fontWeight:'800',color:'#64748b',textTransform:'uppercase',padding:'4px 0'}}>{n}</div>
+                                        ))}
+                                        {celulas.map((ds, i) => renderCelula(ds, i))}
+                                    </div>
+
+                                    <div style={{display:'flex',gap:'12px',flexWrap:'wrap',marginTop:'14px'}}>
+                                        {['1','2'].map(t => (
+                                            <div key={t} style={{flex:'1 1 220px',borderLeft:`5px solid ${cor(t)}`,background:'#f8fafc',borderRadius:'10px',padding:'8px 12px'}}>
+                                                <div style={{fontWeight:'900',fontSize:'13px',color:'#1e293b'}}>{nomeTurma(t)}</div>
+                                                <div style={{fontSize:'12px',color:'#64748b',fontWeight:'600'}}>Neste mês: trabalha {contagem[t].trab} · folga {contagem[t].folga} (domingos e sextas)</div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
 
-                                {totalEquipe === 0 && (
-                                    <div style={{background:'#fffbeb',border:'1.5px solid #fcd34d',borderRadius:'14px',padding:'14px 18px',fontSize:'13px',fontWeight:'700',color:'#92400e'}}>
-                                        ⚠️ As turmas ainda não têm colaboradores. Monte-as em <strong>Gestão de Turmas</strong> para a simulação funcionar.
+                                {infoSel && (
+                                    <div style={{background:'white',borderRadius:'18px',border:'1.5px solid #e2e8f0',padding:'18px'}}>
+                                        <div style={{fontWeight:'900',fontSize:'15px',color:'#1e293b',marginBottom:'12px',textTransform:'capitalize'}}>{fmtData(simDiaSel)}</div>
+                                        <div style={{display:'flex',gap:'14px',flexWrap:'wrap'}}>
+                                            <div style={{flex:'1 1 240px',border:'1.5px solid #a7f3d0',background:'#ecfdf5',borderRadius:'12px',padding:'12px 14px'}}>
+                                                <div style={{fontWeight:'900',fontSize:'13px',color:'#065f46',marginBottom:'6px'}}>✅ Trabalha — {nomeTurma(infoSel.turma)}</div>
+                                                {listaPessoas(infoSel.turma)}
+                                            </div>
+                                            <div style={{flex:'1 1 240px',border:'1.5px solid #fde68a',background:'#fffbeb',borderRadius:'12px',padding:'12px 14px'}}>
+                                                <div style={{fontWeight:'900',fontSize:'13px',color:'#92400e',marginBottom:'6px'}}>🏖️ Folga — {nomeTurma(outra(infoSel.turma))}</div>
+                                                {listaPessoas(outra(infoSel.turma))}
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
-
-                                <div style={{background:'white',borderRadius:'18px',border:'1.5px solid #e2e8f0',overflow:'hidden'}}>
-                                    <div style={{padding:'14px 18px',fontWeight:'900',fontSize:'15px',color:'#1e293b'}}>📆 Semana a semana</div>
-                                    <div style={{overflowX:'auto'}}>
-                                        <table style={{width:'100%',borderCollapse:'collapse'}}>
-                                            <thead><tr>
-                                                <th style={th}>Semana</th>
-                                                <th style={th}>Domingo — trabalha</th>
-                                                <th style={th}>Efetivo dom.</th>
-                                                <th style={th}>Sexta — trabalha</th>
-                                                <th style={th}>Efetivo sex.</th>
-                                                <th style={th}>Folga dom. / sex.</th>
-                                            </tr></thead>
-                                            <tbody>
-                                                {semanas.map(s => (
-                                                    <tr key={s.domData}>
-                                                        <td style={{...td,fontWeight:'800'}}>{fmtCurta(s.domData)} → {fmtCurta(s.sexData)}</td>
-                                                        <td style={td}>{fmtCurta(s.domData)} {chip(s.turmaDom)}</td>
-                                                        <td style={{...td,fontWeight:'800'}}>{s.dispDom}/{s.idsDom.length}</td>
-                                                        <td style={td}>{fmtCurta(s.sexData)} {chip(s.turmaSex)}</td>
-                                                        <td style={{...td,fontWeight:'800'}}>{s.dispSex}/{s.idsSex.length}</td>
-                                                        <td style={{...td,fontSize:'12px',color:'#64748b'}}>Dom.: {nomeTurma(s.turmaSex)} · Sex.: {nomeTurma(s.turmaDom)}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <div style={{padding:'10px 18px',fontSize:'11px',color:'#94a3b8',fontWeight:'600'}}>Efetivo = disponíveis/escalados (descontando férias e afastamentos cadastrados).</div>
-                                </div>
-
-                                <div style={{background:'white',borderRadius:'18px',border:'1.5px solid #e2e8f0',overflow:'hidden'}}>
-                                    <div style={{padding:'14px 18px',fontWeight:'900',fontSize:'15px',color:'#1e293b'}}>👤 Por colaborador (nas {semanas.length} semanas)</div>
-                                    <div style={{overflowX:'auto'}}>
-                                        <table style={{width:'100%',borderCollapse:'collapse'}}>
-                                            <thead><tr>
-                                                <th style={th}>Colaborador</th><th style={th}>Turma</th>
-                                                <th style={th}>Domingos trab.</th><th style={th}>Sextas trab.</th>
-                                                <th style={th}>Folgas dom.</th><th style={th}>Folgas sex.</th>
-                                            </tr></thead>
-                                            <tbody>
-                                                {porColab.map(c => (
-                                                    <tr key={c.id}>
-                                                        <td style={{...td,fontWeight:'700'}}>{getNomeColab(c.id)}</td>
-                                                        <td style={td}>{chip(c.turma)}</td>
-                                                        <td style={td}>{c.dom}</td><td style={td}>{c.sex}</td>
-                                                        <td style={td}>{c.folgaDom}</td><td style={td}>{c.folgaSex}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
                             </div>
                         );
                     })()}
