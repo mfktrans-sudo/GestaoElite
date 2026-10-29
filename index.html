@@ -6763,6 +6763,7 @@
             const [simAtrib, setSimAtrib] = useState({}); // Simulação 5x2: { 'YYYY-MM-DD': '1'|'2' } turma que trabalha naquele dia (só visualização)
             const [simSelTurma, setSimSelTurma] = useState(null); // Simulação 5x2: turma selecionada por clique (alternativa ao arrastar)
             const [simAlvo, setSimAlvo] = useState(null); // Simulação 5x2: dia sob o cursor durante o arrasto
+            const [simModo, setSimModo] = useState('T'); // Simulação 5x2: ao soltar a turma, marcar 'T' (trabalha) ou 'F' (folga)
 
             // ── Estado de Turmas (persistido) ──
             const [turmas, setTurmas] = useState(() => {
@@ -7948,23 +7949,10 @@
                         const outra = (t) => t === '1' ? '2' : '1';
                         const idsTurma = (t) => ((t === '1' ? turmas.turma1.colaboradoresIds : turmas.turma2.colaboradoresIds) || [])
                             .filter(id => colaboradores.some(c => String(c.id) === String(id)));
-                        const mapa = {};
-                        Object.keys(simAtrib).forEach(ds => {
-                            const dw = new Date(ds + 'T12:00:00').getDay();
-                            mapa[ds] = { data: ds, turma: simAtrib[ds], tipo: dw === 0 ? 'domingo' : 'sexta' };
-                        });
-                        const diaElegivel = (ds) => { const dw = new Date(ds + 'T12:00:00').getDay(); return dw === 0 || dw === 5; };
-                        const aplicar = (ds, t, origem) => {
-                            if (!ds || !diaElegivel(ds) || (t !== '1' && t !== '2')) return;
-                            setSimAtrib(p => { const n = { ...p }; if (origem && origem !== ds) delete n[origem]; n[ds] = t; return n; });
-                        };
-                        const remover = (ds) => setSimAtrib(p => { const n = { ...p }; delete n[ds]; return n; });
-                        const carregarAtual = () => { const n = {}; gerarEscalaCompleta.forEach(d => { n[d.data] = d.turma; }); setSimAtrib(n); };
-                        const soltar = (e, ds) => {
-                            e.preventDefault(); setSimAlvo(null);
-                            const [t, origem] = (e.dataTransfer.getData('text/plain') || '').split('|');
-                            aplicar(ds, t || simSelTurma, origem);
-                        };
+
+                        // simAtrib: { 'YYYY-MM-DD': { '1': 'T'|'F', '2': 'T'|'F' } }  (T = trabalha, F = folga)
+                        const mapa = simAtrib;
+                        const nomesDow = ['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
 
                         const mesStr = simMes || hojeStr.slice(0, 7);
                         const [ano, mes] = mesStr.split('-').map(Number);
@@ -7980,75 +7968,101 @@
                         for (let i = 0; i < primeiroDow; i++) celulas.push(null);
                         for (let d = 1; d <= diasNoMes; d++) celulas.push(`${ano}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
 
+                        const aplicar = (ds, t, status, origem) => {
+                            if (!ds || (t !== '1' && t !== '2') || (status !== 'T' && status !== 'F')) return;
+                            setSimAtrib(p => {
+                                const n = { ...p };
+                                if (origem && origem !== ds && n[origem]) {
+                                    const o = { ...n[origem] }; delete o[t];
+                                    if (Object.keys(o).length) n[origem] = o; else delete n[origem];
+                                }
+                                const cur = { ...(n[ds] || {}) };
+                                cur[t] = status;
+                                if (!cur[outra(t)]) cur[outra(t)] = status === 'T' ? 'F' : 'T'; // a outra turma recebe o oposto (se ainda não definida)
+                                n[ds] = cur;
+                                return n;
+                            });
+                        };
+                        const remover = (ds, t) => setSimAtrib(p => {
+                            const n = { ...p };
+                            if (!n[ds]) return p;
+                            const o = { ...n[ds] }; delete o[t];
+                            if (Object.keys(o).length) n[ds] = o; else delete n[ds];
+                            return n;
+                        });
+                        const carregarAtual = () => {
+                            const n = {};
+                            gerarEscalaCompleta.forEach(d => { n[d.data] = { [d.turma]: 'T', [outra(d.turma)]: 'F' }; });
+                            setSimAtrib(n);
+                        };
+                        const soltar = (e, ds) => {
+                            e.preventDefault(); setSimAlvo(null);
+                            const [t, origem, st] = (e.dataTransfer.getData('text/plain') || '').split('|');
+                            aplicar(ds, t || simSelTurma, st || simModo, origem);
+                        };
+
                         const contagem = { '1': { trab: 0, folga: 0 }, '2': { trab: 0, folga: 0 } };
                         celulas.forEach(ds => {
-                            if (ds && mapa[ds]) { contagem[mapa[ds].turma].trab++; contagem[outra(mapa[ds].turma)].folga++; }
+                            const info = ds && mapa[ds];
+                            if (!info) return;
+                            ['1', '2'].forEach(t => { if (info[t] === 'T') contagem[t].trab++; else if (info[t] === 'F') contagem[t].folga++; });
                         });
 
                         const renderCelula = (ds, i) => {
                             if (!ds) return <div key={'v' + i} />;
                             const info = mapa[ds];
                             const dia = Number(ds.slice(8));
+                            const dw = new Date(ds + 'T12:00:00').getDay();
                             const ehHoje = ds === hojeStr;
-                            if (!info) {
-                                if (diaElegivel(ds)) {
-                                    const alvo = simAlvo === ds;
-                                    return (
-                                        <div key={ds}
-                                            onDragOver={(e) => { e.preventDefault(); if (simAlvo !== ds) setSimAlvo(ds); }}
-                                            onDragLeave={() => setSimAlvo(null)}
-                                            onDrop={(e) => soltar(e, ds)}
-                                            onClick={() => { if (simSelTurma) aplicar(ds, simSelTurma); }}
-                                            style={{minHeight:'86px',background:alvo?'#eff6ff':'#fafafa',border:`2px dashed ${alvo?'#3b82f6':'#cbd5e1'}`,borderRadius:'10px',padding:'6px 8px',cursor:simSelTurma?'copy':'default',outline:ehHoje?'2px solid #f59e0b':'none',outlineOffset:'1px'}}>
-                                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                                                <span style={{fontWeight:'900',fontSize:'14px',color:'#475569'}}>{dia}</span>
-                                                <span style={{fontSize:'10px',fontWeight:'800',color:'#94a3b8'}}>{new Date(ds + 'T12:00:00').getDay() === 0 ? 'DOM' : 'SEX'}</span>
-                                            </div>
-                                            <div style={{fontSize:'10px',fontWeight:'700',color:'#94a3b8',marginTop:'8px',textAlign:'center'}}>Solte uma turma aqui</div>
-                                        </div>
-                                    );
-                                }
-                                return (
-                                    <div key={ds} style={{minHeight:'86px',background:'#f8fafc',border:'1.5px solid #f1f5f9',borderRadius:'10px',padding:'6px 8px',color:'#cbd5e1',fontWeight:'800',fontSize:'13px',outline:ehHoje?'2px solid #1e293b':'none'}}>{dia}</div>
-                                );
-                            }
-                            const t = info.turma, f = outra(t);
                             const sel = simDiaSel === ds;
-                            const tag = (txt, bg, fg) => (
-                                <div style={{background:bg,color:fg,fontSize:'10px',fontWeight:'800',padding:'3px 6px',borderRadius:'6px',marginTop:'3px',lineHeight:1.2}}>{txt}</div>
-                            );
-                            let corpo, fundo = 'white';
-                            if (simFiltro === 'todas') {
-                                corpo = (<>
-                                    {tag(`✅ ${nomeTurma(t)} trabalha`, cor(t), 'white')}
-                                    {tag(`🏖️ ${nomeTurma(f)} folga`, '#f1f5f9', '#64748b')}
-                                </>);
-                            } else {
-                                const trabalha = simFiltro === t;
-                                fundo = trabalha ? '#ecfdf5' : '#fffbeb';
-                                corpo = trabalha ? tag('✅ TRABALHA', '#10b981', 'white') : tag('🏖️ FOLGA', '#f59e0b', 'white');
-                            }
+                            const alvo = simAlvo === ds;
+                            const tem = !!(info && (info['1'] || info['2']));
+
+                            const tagTurma = (t) => {
+                                const st = info && info[t];
+                                if (!st) return null;
+                                if (simFiltro !== 'todas' && simFiltro !== t) return null;
+                                const trab = st === 'T';
+                                const txt = simFiltro === 'todas'
+                                    ? (trab ? `✅ ${nomeTurma(t)} trabalha` : `🏖️ ${nomeTurma(t)} folga`)
+                                    : (trab ? '✅ TRABALHA' : '🏖️ FOLGA');
+                                const bg = simFiltro === 'todas' ? (trab ? cor(t) : '#f1f5f9') : (trab ? '#10b981' : '#f59e0b');
+                                const fg = simFiltro === 'todas' ? (trab ? 'white' : '#64748b') : 'white';
+                                return (
+                                    <div key={t} draggable
+                                        onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('text/plain', `${t}|${ds}|${st}`); e.dataTransfer.effectAllowed = 'move'; }}
+                                        style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'4px',background:bg,color:fg,fontSize:'10px',fontWeight:'800',padding:'3px 6px',borderRadius:'6px',marginTop:'3px',lineHeight:1.2,cursor:'grab'}}>
+                                        <span>{txt}</span>
+                                        <button title="Remover" onClick={(e) => { e.stopPropagation(); remover(ds, t); }}
+                                            style={{border:'none',background:'rgba(0,0,0,0.12)',color:'inherit',borderRadius:'5px',fontSize:'9px',fontWeight:'900',cursor:'pointer',padding:'0 4px',lineHeight:1.4}}>✕</button>
+                                    </div>
+                                );
+                            };
+
+                            let fundo = 'white';
+                            if (tem && simFiltro !== 'todas' && info[simFiltro]) fundo = info[simFiltro] === 'T' ? '#ecfdf5' : '#fffbeb';
+                            if (alvo) fundo = '#eff6ff';
+
                             return (
-                                <div key={ds} onClick={() => { if (simSelTurma) aplicar(ds, simSelTurma); else setSimDiaSel(sel ? null : ds); }}
-                                    draggable onDragStart={(e) => { e.dataTransfer.setData('text/plain', `${t}|${ds}`); e.dataTransfer.effectAllowed = 'move'; }}
+                                <div key={ds}
+                                    onClick={() => { if (simSelTurma) aplicar(ds, simSelTurma, simModo); else if (tem) setSimDiaSel(sel ? null : ds); }}
                                     onDragOver={(e) => { e.preventDefault(); if (simAlvo !== ds) setSimAlvo(ds); }}
                                     onDragLeave={() => setSimAlvo(null)}
                                     onDrop={(e) => soltar(e, ds)}
-                                    style={{minHeight:'86px',background:fundo,border:`2px solid ${simAlvo === ds ? '#3b82f6' : (sel ? '#1e293b' : '#e2e8f0')}`,borderRadius:'10px',padding:'6px 8px',cursor:'pointer',outline:ehHoje?'2px solid #f59e0b':'none',outlineOffset:'1px'}}>
+                                    style={{minHeight:'86px',background:tem?fundo:(alvo?'#eff6ff':'#fafafa'),border:`2px ${tem?'solid':'dashed'} ${alvo ? '#3b82f6' : (sel ? '#1e293b' : (tem ? '#e2e8f0' : '#cbd5e1'))}`,borderRadius:'10px',padding:'6px 8px',cursor:simSelTurma?'copy':(tem?'pointer':'default'),outline:ehHoje?'2px solid #f59e0b':'none',outlineOffset:'1px'}}>
                                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                                         <span style={{fontWeight:'900',fontSize:'14px',color:'#1e293b'}}>{dia}</span>
-                                        <span style={{display:'flex',alignItems:'center',gap:'4px'}}>
-                                            <span style={{fontSize:'10px',fontWeight:'800',color:'#94a3b8'}}>{info.tipo === 'domingo' ? 'DOM' : 'SEX'}</span>
-                                            <button title="Remover" onClick={(e) => { e.stopPropagation(); remover(ds); if (simDiaSel === ds) setSimDiaSel(null); }}
-                                                style={{border:'none',background:'#f1f5f9',color:'#64748b',borderRadius:'6px',fontSize:'10px',fontWeight:'900',cursor:'pointer',padding:'1px 5px',lineHeight:1.2}}>✕</button>
-                                        </span>
+                                        <span style={{fontSize:'10px',fontWeight:'800',color:'#94a3b8'}}>{nomesDow[dw]}</span>
                                     </div>
-                                    {corpo}
+                                    {tem ? (<>{tagTurma('1')}{tagTurma('2')}</>) : (
+                                        <div style={{fontSize:'10px',fontWeight:'700',color:'#94a3b8',marginTop:'8px',textAlign:'center'}}>Solte uma turma aqui</div>
+                                    )}
                                 </div>
                             );
                         };
 
                         const infoSel = simDiaSel ? mapa[simDiaSel] : null;
+                        const turmasComStatus = (st) => infoSel ? ['1', '2'].filter(t => infoSel[t] === st) : [];
                         const listaPessoas = (t) => {
                             const ids = idsTurma(t);
                             if (ids.length === 0) return <div style={{fontSize:'12px',color:'#94a3b8'}}>Sem colaboradores nesta turma.</div>;
@@ -8057,12 +8071,16 @@
                                 return <div key={id} style={{fontSize:'13px',fontWeight:'600',color:'#1e293b',padding:'3px 0'}}>{getNomeColab(id)}{af ? <span style={{marginLeft:'6px',fontSize:'11px',color:'#ea580c',fontWeight:'800'}}>🏥 {af.tipo || 'Afastado'}</span> : null}</div>;
                             });
                         };
+                        const btnModo = (k, rotulo, corAtiva) => (
+                            <button key={k} onClick={() => setSimModo(k)}
+                                style={{padding:'6px 14px',borderRadius:'10px',border:'1.5px solid #e2e8f0',fontWeight:'800',fontSize:'12px',cursor:'pointer',background:simModo===k?corAtiva:'white',color:simModo===k?'white':'#64748b'}}>{rotulo}</button>
+                        );
 
                         return (
                             <div style={{display:'flex',flexDirection:'column',gap:'16px'}}>
                                 <div style={{background:'white',borderRadius:'18px',border:'1.5px solid #e2e8f0',padding:'20px'}}>
                                     <div style={{fontSize:'18px',fontWeight:'900',color:'#1e293b'}}>🧪 Simulação da regra 5x2</div>
-                                    <div style={{fontSize:'13px',color:'#64748b',marginTop:'4px'}}>Metade da equipe trabalha na sexta e folga no domingo; a outra metade faz o contrário, e as turmas se alternam a cada semana. Arraste uma turma para os domingos e sextas em que ela deve trabalhar — a outra turma fica automaticamente de folga. Clique em um dia preenchido para ver quem trabalha e quem folga. Apenas visualização — não altera a escala.</div>
+                                    <div style={{fontSize:'13px',color:'#64748b',marginTop:'4px'}}>Metade da equipe trabalha na sexta e folga no domingo; a outra metade faz o contrário, e as turmas se alternam a cada semana. Escolha "Trabalha" ou "Folga" e arraste uma turma para qualquer dia do calendário — a outra turma recebe automaticamente o oposto. Clique em um dia preenchido para ver quem trabalha e quem folga. Apenas visualização — não altera a escala.</div>
                                     <div style={{display:'flex',gap:'6px',alignItems:'center',flexWrap:'wrap',marginTop:'14px'}}>
                                         <span style={{fontSize:'12px',fontWeight:'800',color:'#64748b'}}>Ver:</span>
                                         {[['todas','Todas as turmas'],['1',nomeTurma('1')],['2',nomeTurma('2')]].map(([k, n]) => (
@@ -8080,11 +8098,16 @@
                                             <button onClick={() => { setSimAtrib({}); setSimDiaSel(null); }} style={{padding:'6px 12px',borderRadius:'10px',border:'1.5px solid #fecaca',background:'#fef2f2',fontWeight:'800',fontSize:'11px',color:'#dc2626',cursor:'pointer'}}>🧹 Limpar simulação</button>
                                         </div>
                                     </div>
+                                    <div style={{display:'flex',gap:'6px',alignItems:'center',flexWrap:'wrap',marginBottom:'12px'}}>
+                                        <span style={{fontSize:'12px',fontWeight:'800',color:'#64748b'}}>Ao soltar, marcar como:</span>
+                                        {btnModo('T', '✅ Trabalha', '#10b981')}
+                                        {btnModo('F', '🏖️ Folga', '#f59e0b')}
+                                    </div>
                                     <div style={{display:'flex',gap:'12px',flexWrap:'wrap'}}>
                                         {['1','2'].map(t => (
                                             <div key={t} style={{flex:'1 1 260px',borderLeft:`5px solid ${cor(t)}`,background:'#f8fafc',borderRadius:'10px',padding:'10px 12px'}}>
                                                 <div draggable
-                                                    onDragStart={(e) => { e.dataTransfer.setData('text/plain', `${t}|`); e.dataTransfer.effectAllowed = 'copy'; }}
+                                                    onDragStart={(e) => { e.dataTransfer.setData('text/plain', `${t}||`); e.dataTransfer.effectAllowed = 'copy'; }}
                                                     onClick={() => setSimSelTurma(simSelTurma === t ? null : t)}
                                                     title="Arraste para um dia (ou clique aqui e depois no dia)"
                                                     style={{display:'inline-flex',alignItems:'center',gap:'8px',background:cor(t),color:'white',fontWeight:'900',fontSize:'13px',padding:'8px 14px',borderRadius:'10px',cursor:'grab',userSelect:'none',boxShadow:simSelTurma===t?'0 0 0 3px #1e293b':'none'}}>
@@ -8098,8 +8121,8 @@
                                         ))}
                                     </div>
                                     <div style={{fontSize:'11px',color:'#94a3b8',fontWeight:'600',marginTop:'10px'}}>
-                                        {simSelTurma ? `Turma selecionada: ${nomeTurma(simSelTurma)} — clique em um domingo/sexta para aplicar (clique na turma de novo para desmarcar). ` : ''}
-                                        Dica: arraste um dia já preenchido para outro dia para movê-lo; use ✕ para remover.
+                                        {simSelTurma ? `Turma selecionada: ${nomeTurma(simSelTurma)} (${simModo === 'T' ? 'trabalha' : 'folga'}) — clique em um dia para aplicar; clique na turma de novo para desmarcar. ` : ''}
+                                        Dica: arraste a etiqueta de um dia para outro para movê-la; use ✕ para remover. Para a outra turma também trabalhar (ou folgar) no mesmo dia, solte-a no dia com o modo desejado.
                                     </div>
                                 </div>
 
@@ -8124,7 +8147,7 @@
                                         {['1','2'].map(t => (
                                             <div key={t} style={{flex:'1 1 220px',borderLeft:`5px solid ${cor(t)}`,background:'#f8fafc',borderRadius:'10px',padding:'8px 12px'}}>
                                                 <div style={{fontWeight:'900',fontSize:'13px',color:'#1e293b'}}>{nomeTurma(t)}</div>
-                                                <div style={{fontSize:'12px',color:'#64748b',fontWeight:'600'}}>Neste mês: trabalha {contagem[t].trab} · folga {contagem[t].folga} (domingos e sextas)</div>
+                                                <div style={{fontSize:'12px',color:'#64748b',fontWeight:'600'}}>Neste mês: trabalha {contagem[t].trab} · folga {contagem[t].folga} dia(s)</div>
                                             </div>
                                         ))}
                                     </div>
@@ -8134,14 +8157,18 @@
                                     <div style={{background:'white',borderRadius:'18px',border:'1.5px solid #e2e8f0',padding:'18px'}}>
                                         <div style={{fontWeight:'900',fontSize:'15px',color:'#1e293b',marginBottom:'12px',textTransform:'capitalize'}}>{fmtData(simDiaSel)}</div>
                                         <div style={{display:'flex',gap:'14px',flexWrap:'wrap'}}>
-                                            <div style={{flex:'1 1 240px',border:'1.5px solid #a7f3d0',background:'#ecfdf5',borderRadius:'12px',padding:'12px 14px'}}>
-                                                <div style={{fontWeight:'900',fontSize:'13px',color:'#065f46',marginBottom:'6px'}}>✅ Trabalha — {nomeTurma(infoSel.turma)}</div>
-                                                {listaPessoas(infoSel.turma)}
-                                            </div>
-                                            <div style={{flex:'1 1 240px',border:'1.5px solid #fde68a',background:'#fffbeb',borderRadius:'12px',padding:'12px 14px'}}>
-                                                <div style={{fontWeight:'900',fontSize:'13px',color:'#92400e',marginBottom:'6px'}}>🏖️ Folga — {nomeTurma(outra(infoSel.turma))}</div>
-                                                {listaPessoas(outra(infoSel.turma))}
-                                            </div>
+                                            {turmasComStatus('T').map(t => (
+                                                <div key={'T' + t} style={{flex:'1 1 240px',border:'1.5px solid #a7f3d0',background:'#ecfdf5',borderRadius:'12px',padding:'12px 14px'}}>
+                                                    <div style={{fontWeight:'900',fontSize:'13px',color:'#065f46',marginBottom:'6px'}}>✅ Trabalha — {nomeTurma(t)}</div>
+                                                    {listaPessoas(t)}
+                                                </div>
+                                            ))}
+                                            {turmasComStatus('F').map(t => (
+                                                <div key={'F' + t} style={{flex:'1 1 240px',border:'1.5px solid #fde68a',background:'#fffbeb',borderRadius:'12px',padding:'12px 14px'}}>
+                                                    <div style={{fontWeight:'900',fontSize:'13px',color:'#92400e',marginBottom:'6px'}}>🏖️ Folga — {nomeTurma(t)}</div>
+                                                    {listaPessoas(t)}
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 )}
