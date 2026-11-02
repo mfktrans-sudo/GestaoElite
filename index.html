@@ -17580,86 +17580,73 @@
             const pedidoMaisRecente = useMemo(() => marmitas.length ? [...marmitas].sort(ordenarPedidosRecentes)[0] : null, [marmitas]);
 
             // ===== ETIQUETAS (WORD) =====
-            const montarDocumentoEtiquetas = function(D, etiquetas, layout) {
+            const montarDocumentoEtiquetas = function(D, etiquetas) {
                 const { Document, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType,
-                        VerticalAlign, BorderStyle, HeightRule, PageBreak, ShadingType } = D;
-                const grande = layout !== 'medio';
-                const COLS = grande ? 1 : 2;
-                const LINHAS = grande ? 4 : 5;
-                const POR_PAGINA = COLS * LINHAS;
-                const LARG_TOTAL = 10998;
-                const LARG_COL = Math.floor(LARG_TOTAL / COLS);
-                const ALT_LINHA = grande ? 3880 : 3100;
-            
-                const tamNome = (n) => {
-                    const t = n.length;
-                    if (grande) return t <= 14 ? 120 : t <= 20 ? 96 : t <= 28 ? 80 : t <= 38 ? 64 : 52;
-                    return t <= 10 ? 80 : t <= 16 ? 64 : t <= 22 ? 52 : t <= 30 ? 44 : 38;
+                        VerticalAlign, BorderStyle, HeightRule, PageBreak } = D;
+                // Etiqueta 10x10 cm (5669 DXA), 2 marmitas por etiqueta (uma em cima, outra embaixo)
+                const PAG = 5669, MARG = 170;
+                const LARG = PAG - 2 * MARG;          // 5329
+                const ALT_LINHA = 2640;               // 2 linhas = 5280 (cabe com folga)
+                const ajusta = (txt, max, min) => {
+                    const t = Math.max(txt.length, 1);
+                    return Math.max(min, Math.min(max, Math.floor(250 / (0.74 * t)))) * 2; // meio-pontos
                 };
-                const tamSabor = (s) => {
-                    const t = s.length;
-                    if (grande) return t <= 16 ? 80 : t <= 26 ? 64 : 52;
-                    return t <= 14 ? 52 : t <= 22 ? 42 : 34;
-                };
-                const lado = { style: BorderStyle.SINGLE, size: 12, color: '000000' };
-                const bordas = { top: lado, bottom: lado, left: lado, right: lado };
+                const solido = { style: BorderStyle.SINGLE, size: 8, color: '000000' };
+                const tracejado = { style: BorderStyle.DASHED, size: 8, color: '000000' };
             
-                const celula = (e) => {
-                    const filhos = e ? [
+                const celula = (e, topo) => new TableCell({
+                    width: { size: LARG, type: WidthType.DXA },
+                    verticalAlign: VerticalAlign.CENTER,
+                    borders: {
+                        top: topo ? solido : tracejado,
+                        bottom: topo ? tracejado : solido,
+                        left: solido, right: solido
+                    },
+                    margins: { top: 40, bottom: 40, left: 100, right: 100 },
+                    children: e ? [
                         new Paragraph({
                             alignment: AlignmentType.CENTER,
-                            spacing: { before: 0, after: grande ? 160 : 100, line: 240, lineRule: 'auto' },
-                            children: [new TextRun({ text: e.nome, bold: true, font: 'Arial', size: tamNome(e.nome) })]
+                            spacing: { before: 0, after: 400, line: 240, lineRule: 'auto' },
+                            children: [new TextRun({ text: e.nome, bold: true, font: 'Arial', size: ajusta(e.nome, 18, 11) })]
                         }),
                         new Paragraph({
                             alignment: AlignmentType.CENTER,
                             spacing: { before: 0, after: 0 },
-                            children: [new TextRun({ text: e.sabor, bold: true, font: 'Arial', size: tamSabor(e.sabor) })]
+                            children: [new TextRun({ text: e.sabor, bold: true, font: 'Arial', size: ajusta(e.sabor, 34, 18) })]
                         })
-                    ] : [new Paragraph({ children: [] })];
-                    return new TableCell({
-                        width: { size: LARG_COL, type: WidthType.DXA },
-                        verticalAlign: VerticalAlign.CENTER,
-                        borders: e ? bordas : { top: lado, bottom: lado, left: lado, right: lado },
-                        margins: { top: 60, bottom: 60, left: 120, right: 120 },
-                        children: filhos
-                    });
-                };
+                    ] : [new Paragraph({ children: [] })]
+                });
             
-                const filhosDoc = [];
-                for (let p = 0; p < etiquetas.length; p += POR_PAGINA) {
-                    const pagina = etiquetas.slice(p, p + POR_PAGINA);
-                    const linhas = [];
-                    for (let r = 0; r < LINHAS; r++) {
-                        const cels = [];
-                        for (let c = 0; c < COLS; c++) cels.push(celula(pagina[r * COLS + c]));
-                        if (r * COLS >= pagina.length) break;
-                        linhas.push(new TableRow({ height: { value: ALT_LINHA, rule: HeightRule.EXACT }, cantSplit: true, children: cels }));
-                    }
-                    filhosDoc.push(new Table({
-                        width: { size: LARG_COL * COLS, type: WidthType.DXA },
-                        columnWidths: Array(COLS).fill(LARG_COL),
-                        rows: linhas
+                const filhos = [];
+                for (let p = 0; p < etiquetas.length; p += 2) {
+                    const par = etiquetas.slice(p, p + 2);
+                    filhos.push(new Table({
+                        width: { size: LARG, type: WidthType.DXA },
+                        columnWidths: [LARG],
+                        rows: [0, 1].map(i => new TableRow({
+                            height: { value: ALT_LINHA, rule: HeightRule.EXACT },
+                            cantSplit: true,
+                            children: [celula(par[i], i === 0)]
+                        }))
                     }));
-                    const ultima = p + POR_PAGINA >= etiquetas.length;
-                    filhosDoc.push(new Paragraph({
+                    const ultima = p + 2 >= etiquetas.length;
+                    filhos.push(new Paragraph({
                         spacing: { before: 0, after: 0, line: 20, lineRule: 'exact' },
                         children: ultima ? [new TextRun({ text: '', size: 2 })] : [new PageBreak()]
                     }));
                 }
                 return new Document({
                     creator: 'Gestão Elite',
-                    title: 'Etiquetas de Marmitas',
+                    title: 'Etiquetas de Marmitas 10x10',
                     sections: [{
-                        properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 454, bottom: 454, left: 454, right: 454, header: 0, footer: 0 } } },
-                        children: filhosDoc
+                        properties: { page: { size: { width: PAG, height: PAG }, margin: { top: MARG, bottom: MARG, left: MARG, right: MARG, header: 0, footer: 0 } } },
+                        children: filhos
                     }]
                 });
             };
             const [showEtiquetasModal, setShowEtiquetasModal] = useState(false);
             const [etiquetaEscopo, setEtiquetaEscopo] = useState('ultimo');
-            const [etiquetaLayout, setEtiquetaLayout] = useState('grande');
-            const abrirEtiquetas = (escopo) => { setEtiquetaEscopo(escopo); setShowEtiquetasModal(true); };
+                        const abrirEtiquetas = (escopo) => { setEtiquetaEscopo(escopo); setShowEtiquetasModal(true); };
             const limparSaborEtiqueta = (s) => String(s || '').replace(/^[^\p{L}\p{N}]+/u, '').trim();
             const pedidosDoEscopo = () => {
                 if (etiquetaEscopo === 'ultimo') return pedidoMaisRecente ? [pedidoMaisRecente] : [];
@@ -17689,16 +17676,15 @@
                 const nomeArq = 'etiquetas_marmitas_' + getDataBrasilia();
                 try {
                     if (window.docx && window.docx.Packer) {
-                        const doc = montarDocumentoEtiquetas(window.docx, etiquetas, etiquetaLayout);
+                        const doc = montarDocumentoEtiquetas(window.docx, etiquetas);
                         const blob = await window.docx.Packer.toBlob(doc);
                         baixarBlob(blob, nomeArq + '.docx');
                     } else {
-                        // Plano B (sem internet para carregar a biblioteca): HTML aberto pelo Word
-                        const grande = etiquetaLayout !== 'medio';
-                        const cel = (e) => '<td style="border:1.5pt solid #000;text-align:center;vertical-align:middle;height:' + (grande ? '6.8cm' : '5.4cm') + ';width:' + (grande ? '19cm' : '9.5cm') + ';padding:6pt"><div style="font:bold ' + (grande ? '48pt' : '28pt') + ' Arial">' + e.nome + '</div><div style="font:bold ' + (grande ? '32pt' : '20pt') + ' Arial">' + e.sabor + '</div></td>';
-                        const cols = grande ? 1 : 2; let linhas = '';
-                        for (let i = 0; i < etiquetas.length; i += cols) linhas += '<tr>' + etiquetas.slice(i, i + cols).map(cel).join('') + '</tr>';
-                        const html = '<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>@page{size:21cm 29.7cm;margin:0.8cm}</style></head><body><table style="border-collapse:collapse" cellspacing="0">' + linhas + '</table></body></html>';
+                        // Plano B (sem internet para carregar a biblioteca): HTML aberto pelo Word, 10x10 cm
+                        const cel = (e, top) => '<td style="border:1pt solid #000;border-' + (top ? 'bottom' : 'top') + ':1pt dashed #000;text-align:center;vertical-align:middle;height:4.6cm;width:9.4cm"><div style="font:bold 11pt Arial">' + (e ? e.nome : '') + '</div><br><div style="font:bold 26pt Arial">' + (e ? e.sabor : '') + '</div></td>';
+                        let corpo = '';
+                        for (let i = 0; i < etiquetas.length; i += 2) corpo += '<table style="border-collapse:collapse;page-break-after:always" cellspacing="0"><tr>' + cel(etiquetas[i], true) + '</tr><tr>' + cel(etiquetas[i + 1], false) + '</tr></table>';
+                        const html = '<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>@page{size:10cm 10cm;margin:0.3cm}</style></head><body>' + corpo + '</body></html>';
                         baixarBlob(new Blob(['\ufeff', html], { type: 'application/msword' }), nomeArq + '.doc');
                     }
                     setShowEtiquetasModal(false);
@@ -18365,7 +18351,7 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowEtiquetasModal(false)}>
                             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
                                 <h3 className="text-xl font-bold text-amber-700 mb-1">🏷️ Etiquetas para impressão (Word)</h3>
-                                <p className="text-xs text-gray-500 mb-4">Uma etiqueta por marmita: nome do colaborador em cima e o sabor escolhido embaixo.</p>
+                                <p className="text-xs text-gray-500 mb-4">Nome do colaborador em cima e o sabor escolhido em destaque embaixo.</p>
                                 <div className="mb-4">
                                     <div className="text-xs font-bold text-gray-600 mb-2">O que baixar?</div>
                                     {opEscopo.map(o => (
@@ -18374,15 +18360,8 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
                                         </label>
                                     ))}
                                 </div>
-                                <div className="mb-4">
-                                    <div className="text-xs font-bold text-gray-600 mb-2">Tamanho da etiqueta (folha A4)</div>
-                                    {[{ k: 'grande', t: '🔲 Grande — 4 por folha (1 por linha)' }, { k: 'medio', t: '▦ Média — 10 por folha (2 por linha)' }].map(o => (
-                                        <label key={o.k} className={`flex items-center gap-2 px-3 py-2 mb-1 rounded-lg border-2 cursor-pointer text-sm font-semibold ${etiquetaLayout === o.k ? 'border-amber-500 bg-amber-50' : 'border-gray-200'}`}>
-                                            <input type="radio" name="etqLayout" checked={etiquetaLayout === o.k} onChange={() => setEtiquetaLayout(o.k)} /> {o.t}
-                                        </label>
-                                    ))}
-                                </div>
-                                <div className="text-sm font-bold text-gray-700 mb-4">{qtd} etiqueta{qtd !== 1 ? 's' : ''} serão geradas</div>
+                                <div className="mb-4 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-gray-600">📐 Etiqueta <b>10 x 10 cm</b> (Zebra TP, retrato, margens 0) — <b>2 marmitas por etiqueta</b>, separadas por linha tracejada.</div>
+                                <div className="text-sm font-bold text-gray-700 mb-4">{qtd} marmita{qtd !== 1 ? 's' : ''} → {Math.ceil(qtd / 2)} etiqueta{Math.ceil(qtd / 2) !== 1 ? 's' : ''} 10x10</div>
                                 <div className="flex gap-3 justify-end">
                                     <button onClick={() => setShowEtiquetasModal(false)} className="px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg font-bold hover:bg-gray-100">Cancelar</button>
                                     <button onClick={gerarEtiquetasWord} disabled={qtd === 0} className="px-5 py-2 bg-amber-500 text-white rounded-lg font-bold hover:bg-amber-600 disabled:opacity-50">⬇️ Baixar Word</button>
