@@ -6761,7 +6761,14 @@
             const [simMes, setSimMes] = useState(''); // Simulação 5x2: mês exibido (YYYY-MM); vazio = mês atual
             const [simDiaSel, setSimDiaSel] = useState(null); // Simulação 5x2: dia clicado
             const [simFiltro, setSimFiltro] = useState('todas'); // Simulação 5x2: 'todas' | '1' | '2'
-            const [simAtrib, setSimAtrib] = useState({}); // Simulação 5x2: { 'YYYY-MM-DD': '1'|'2' } turma que trabalha naquele dia (só visualização)
+            const [simAtrib, setSimAtrib] = useState(() => { // Simulação 5x2: { 'YYYY-MM-DD': { '1': 'T'|'F', '2': 'T'|'F' } } — salvo no navegador (chave sim5x2_atrib)
+                try {
+                    const s = localStorage.getItem('sim5x2_atrib');
+                    if (s) { const p = JSON.parse(s); if (p && typeof p === 'object' && !Array.isArray(p)) return p; }
+                } catch(e) {}
+                return {};
+            });
+            const simRestaurado = useRef(false); // só grava depois de tentar recuperar do IndexedDB (evita sobrescrever com vazio)
             const [simSelTurma, setSimSelTurma] = useState(null); // Simulação 5x2: turma selecionada por clique (alternativa ao arrastar)
             const [simAlvo, setSimAlvo] = useState(null); // Simulação 5x2: dia sob o cursor durante o arrasto
             const [simModo, setSimModo] = useState('T'); // Simulação 5x2: ao soltar a turma, marcar 'T' (trabalha) ou 'F' (folga)
@@ -6840,6 +6847,24 @@
 
             useEffect(() => {
                 idbGet('turmas_config').then(v => { if (v) setTurmas(v); }).catch(() => {});
+            }, []);
+
+            // ── Persistência da Simulação 5x2 (localStorage + IndexedDB) ──
+            useEffect(() => {
+                if (!simRestaurado.current) return;
+                try { localStorage.setItem('sim5x2_atrib', JSON.stringify(simAtrib)); } catch(e) {}
+                idbSet('sim5x2_atrib', simAtrib).catch(() => {});
+            }, [simAtrib]);
+
+            useEffect(() => {
+                idbGet('sim5x2_atrib').then(v => {
+                    if (v && typeof v === 'object' && !Array.isArray(v)) {
+                        setSimAtrib(prev => (Object.keys(prev).length >= Object.keys(v).length ? prev : v));
+                    }
+                }).catch(() => {}).then(() => {
+                    simRestaurado.current = true;
+                    setSimAtrib(prev => ({ ...prev })); // dispara a primeira gravação
+                });
             }, []);
 
             // ── Limpeza automática de IDs órfãos nas turmas (colaboradores desligados) ──
@@ -7992,9 +8017,44 @@
                             return n;
                         });
                         const carregarAtual = () => {
+                            if (Object.keys(simAtrib).length && !confirm('Isto substitui o que você definiu na simulação pela escala atual. Continuar?')) return;
                             const n = {};
                             gerarEscalaCompleta.forEach(d => { n[d.data] = { [d.turma]: 'T', [outra(d.turma)]: 'F' }; });
                             setSimAtrib(n);
+                        };
+                        // ── Repetir o padrão definido até 31/12, mantendo a mesma cronologia (período = nº de semanas completas do padrão) ──
+                        // MARCADOR_PROJECAO_INI
+                        const calcProjecao = (atrib) => {
+                            const dias = Object.keys(atrib).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d) && atrib[d] && (atrib[d]['1'] || atrib[d]['2'])).sort();
+                            if (!dias.length) return null;
+                            const DIA = 86400000;
+                            const U = (x) => Date.UTC(+x.slice(0, 4), +x.slice(5, 7) - 1, +x.slice(8, 10));
+                            const Sd = (ms) => new Date(ms).toISOString().slice(0, 10);
+                            const primeiro = dias[0], ultimo = dias[dias.length - 1];
+                            const span = Math.round((U(ultimo) - U(primeiro)) / DIA) + 1;
+                            const periodo = Math.ceil(span / 7) * 7;
+                            const fimAno = U(ultimo.slice(0, 4) + '-12-31');
+                            const novo = { ...atrib };
+                            let adicionados = 0;
+                            for (let k = 1; U(primeiro) + k * periodo * DIA <= fimAno; k++) {
+                                dias.forEach(d => {
+                                    const alvo = U(d) + k * periodo * DIA;
+                                    if (alvo > fimAno) return;
+                                    novo[Sd(alvo)] = { ...atrib[d] };
+                                    adicionados++;
+                                });
+                            }
+                            return { novo, primeiro, ultimo, periodo, adicionados, fimAno: Sd(fimAno) };
+                        };
+                        // MARCADOR_PROJECAO_FIM
+                        const fmtBR = (x) => x.split('-').reverse().join('/');
+                        const repetirAteFimDoAno = () => {
+                            const r = calcProjecao(simAtrib);
+                            if (!r) { alert('Defina primeiro o padrão no calendário (arraste as turmas para os dias).'); return; }
+                            if (!r.adicionados) { alert('O padrão já chega até ' + fmtBR(r.fimAno) + '. Não há dias para completar.'); return; }
+                            if (!confirm('Padrão definido: ' + fmtBR(r.primeiro) + ' a ' + fmtBR(r.ultimo) + ' (se repete a cada ' + r.periodo + ' dias).\n\nEle será repetido, na mesma sequência, até ' + fmtBR(r.fimAno) + ' (' + r.adicionados + ' marcações novas).\n\nContinuar?')) return;
+                            setSimAtrib(r.novo);
+                            setSimDiaSel(null);
                         };
                         const soltar = (e, ds) => {
                             e.preventDefault(); setSimAlvo(null);
@@ -8096,7 +8156,8 @@
                                         <div style={{fontWeight:'900',fontSize:'14px',color:'#1e293b'}}>🧩 Turmas — arraste para o calendário</div>
                                         <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
                                             <button onClick={carregarAtual} style={{padding:'6px 12px',borderRadius:'10px',border:'1.5px solid #e2e8f0',background:'white',fontWeight:'800',fontSize:'11px',color:'#64748b',cursor:'pointer'}}>📋 Carregar escala atual</button>
-                                            <button onClick={() => { setSimAtrib({}); setSimDiaSel(null); }} style={{padding:'6px 12px',borderRadius:'10px',border:'1.5px solid #fecaca',background:'#fef2f2',fontWeight:'800',fontSize:'11px',color:'#dc2626',cursor:'pointer'}}>🧹 Limpar simulação</button>
+                                            <button onClick={() => { if (Object.keys(simAtrib).length && !confirm('Apagar tudo o que foi definido na simulação (inclusive o que está salvo)?')) return; setSimAtrib({}); setSimDiaSel(null); }} style={{padding:'6px 12px',borderRadius:'10px',border:'1.5px solid #fecaca',background:'#fef2f2',fontWeight:'800',fontSize:'11px',color:'#dc2626',cursor:'pointer'}}>🧹 Limpar simulação</button>
+                                            <button onClick={repetirAteFimDoAno} title="Repete o padrão que você definiu, na mesma sequência, até 31/12" style={{padding:'6px 12px',borderRadius:'10px',border:'1.5px solid #bfdbfe',background:'#eff6ff',fontWeight:'800',fontSize:'11px',color:'#1d4ed8',cursor:'pointer'}}>🔁 Repetir padrão até o fim do ano</button>
                                         </div>
                                     </div>
                                     <div style={{display:'flex',gap:'6px',alignItems:'center',flexWrap:'wrap',marginBottom:'12px'}}>
@@ -8123,7 +8184,7 @@
                                     </div>
                                     <div style={{fontSize:'11px',color:'#94a3b8',fontWeight:'600',marginTop:'10px'}}>
                                         {simSelTurma ? `Turma selecionada: ${nomeTurma(simSelTurma)} (${simModo === 'T' ? 'trabalha' : 'folga'}) — clique em um dia para aplicar; clique na turma de novo para desmarcar. ` : ''}
-                                        Dica: arraste a etiqueta de um dia para outro para movê-la; use ✕ para remover. Para a outra turma também trabalhar (ou folgar) no mesmo dia, solte-a no dia com o modo desejado.
+                                        Dica: arraste a etiqueta de um dia para outro para movê-la; use ✕ para remover. Para a outra turma também trabalhar (ou folgar) no mesmo dia, solte-a no dia com o modo desejado. Tudo o que você definir fica salvo automaticamente neste navegador; use "Repetir padrão até o fim do ano" para estender o que já definiu.
                                     </div>
                                 </div>
 
