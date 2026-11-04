@@ -8022,37 +8022,57 @@
                             gerarEscalaCompleta.forEach(d => { n[d.data] = { [d.turma]: 'T', [outra(d.turma)]: 'F' }; });
                             setSimAtrib(n);
                         };
-                        // ── Repetir o padrão definido até 31/12, mantendo a mesma cronologia (período = nº de semanas completas do padrão) ──
+                        // ── Continuar o padrão dia após dia até 31/12 ──
+                        // O padrão é o primeiro trecho contínuo (sem dia em branco) já definido. Descobre-se o menor ciclo em semanas
+                        // inteiras (7, 14, 21...) em que esse trecho se repete sem contradição e continua-se a sequência a partir do dia seguinte.
                         // MARCADOR_PROJECAO_INI
                         const calcProjecao = (atrib) => {
-                            const dias = Object.keys(atrib).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d) && atrib[d] && (atrib[d]['1'] || atrib[d]['2'])).sort();
+                            const ok = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && atrib[d] && (atrib[d]['1'] || atrib[d]['2']);
+                            const dias = Object.keys(atrib).filter(ok).sort();
                             if (!dias.length) return null;
                             const DIA = 86400000;
                             const U = (x) => Date.UTC(+x.slice(0, 4), +x.slice(5, 7) - 1, +x.slice(8, 10));
                             const Sd = (ms) => new Date(ms).toISOString().slice(0, 10);
-                            const primeiro = dias[0], ultimo = dias[dias.length - 1];
-                            const span = Math.round((U(ultimo) - U(primeiro)) / DIA) + 1;
-                            const periodo = Math.ceil(span / 7) * 7;
+                            const primeiro = dias[0];
+                            // trecho contínuo a partir do primeiro dia definido
+                            const bloco = [primeiro];
+                            while (true) {
+                                const prox = Sd(U(bloco[bloco.length - 1]) + DIA);
+                                if (ok(prox)) bloco.push(prox); else break;
+                            }
+                            const ultimo = bloco[bloco.length - 1];
+                            const chave = (d) => (atrib[d]['1'] || '-') + (atrib[d]['2'] || '-');
+                            const comprimento = bloco.length;
+                            let periodo = Math.ceil(comprimento / 7) * 7;
+                            for (let P = 7; P < periodo; P += 7) {
+                                const vistos = {};
+                                let consistente = true;
+                                bloco.forEach((d, i) => {
+                                    const c = i % P, k = chave(d);
+                                    if (vistos[c] === undefined) vistos[c] = k; else if (vistos[c] !== k) consistente = false;
+                                });
+                                if (consistente) { periodo = P; break; }
+                            }
+                            const ciclo = {};
+                            bloco.forEach((d, i) => { const c = i % periodo; if (!ciclo[c]) ciclo[c] = { ...atrib[d] }; });
                             const fimAno = U(ultimo.slice(0, 4) + '-12-31');
                             const novo = { ...atrib };
-                            let adicionados = 0;
-                            for (let k = 1; U(primeiro) + k * periodo * DIA <= fimAno; k++) {
-                                dias.forEach(d => {
-                                    const alvo = U(d) + k * periodo * DIA;
-                                    if (alvo > fimAno) return;
-                                    novo[Sd(alvo)] = { ...atrib[d] };
-                                    adicionados++;
-                                });
+                            Object.keys(novo).forEach(d => { if (d > ultimo && U(d) <= fimAno) delete novo[d]; }); // substitui o que já existia depois do padrão (até 31/12)
+                            let adicionados = 0, diasCont = 0;
+                            for (let t = U(ultimo) + DIA, i = comprimento; t <= fimAno; t += DIA, i++) {
+                                diasCont++;
+                                const v = ciclo[i % periodo];
+                                if (v) { novo[Sd(t)] = { ...v }; adicionados++; }
                             }
-                            return { novo, primeiro, ultimo, periodo, adicionados, fimAno: Sd(fimAno) };
+                            return { novo, primeiro, ultimo, periodo, adicionados, diasCont, fimAno: Sd(fimAno), inicioCont: Sd(U(ultimo) + DIA) };
                         };
                         // MARCADOR_PROJECAO_FIM
                         const fmtBR = (x) => x.split('-').reverse().join('/');
                         const repetirAteFimDoAno = () => {
                             const r = calcProjecao(simAtrib);
                             if (!r) { alert('Defina primeiro o padrão no calendário (arraste as turmas para os dias).'); return; }
-                            if (!r.adicionados) { alert('O padrão já chega até ' + fmtBR(r.fimAno) + '. Não há dias para completar.'); return; }
-                            if (!confirm('Padrão definido: ' + fmtBR(r.primeiro) + ' a ' + fmtBR(r.ultimo) + ' (se repete a cada ' + r.periodo + ' dias).\n\nEle será repetido, na mesma sequência, até ' + fmtBR(r.fimAno) + ' (' + r.adicionados + ' marcações novas).\n\nContinuar?')) return;
+                            if (!r.adicionados) { alert('O padrão definido (' + fmtBR(r.primeiro) + ' a ' + fmtBR(r.ultimo) + ') já chega até ' + fmtBR(r.fimAno) + '. Não há dias para completar.'); return; }
+                            if (!confirm('Padrão definido: ' + fmtBR(r.primeiro) + ' a ' + fmtBR(r.ultimo) + ' (ciclo de ' + r.periodo + ' dias).\n\nA sequência continuará dia após dia, de ' + fmtBR(r.inicioCont) + ' até ' + fmtBR(r.fimAno) + ' (' + r.adicionados + ' marcações). O que já estiver marcado depois de ' + fmtBR(r.ultimo) + ' será substituído.\n\nContinuar?')) return;
                             setSimAtrib(r.novo);
                             setSimDiaSel(null);
                         };
@@ -8184,7 +8204,7 @@
                                     </div>
                                     <div style={{fontSize:'11px',color:'#94a3b8',fontWeight:'600',marginTop:'10px'}}>
                                         {simSelTurma ? `Turma selecionada: ${nomeTurma(simSelTurma)} (${simModo === 'T' ? 'trabalha' : 'folga'}) — clique em um dia para aplicar; clique na turma de novo para desmarcar. ` : ''}
-                                        Dica: arraste a etiqueta de um dia para outro para movê-la; use ✕ para remover. Para a outra turma também trabalhar (ou folgar) no mesmo dia, solte-a no dia com o modo desejado. Tudo o que você definir fica salvo automaticamente neste navegador; use "Repetir padrão até o fim do ano" para estender o que já definiu.
+                                        Dica: arraste a etiqueta de um dia para outro para movê-la; use ✕ para remover. Para a outra turma também trabalhar (ou folgar) no mesmo dia, solte-a no dia com o modo desejado. Tudo o que você definir fica salvo automaticamente neste navegador; use "Repetir padrão até o fim do ano" para continuar a sequência já definida até 31/12.
                                     </div>
                                 </div>
 
