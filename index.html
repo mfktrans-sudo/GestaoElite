@@ -8076,6 +8076,78 @@
                             setSimAtrib(r.novo);
                             setSimDiaSel(null);
                         };
+                        // ── Imagem do mês para WhatsApp (PNG, desenhada direto em canvas) ──
+                        // MARCADOR_IMG_INI
+                        const baixarImagemWhatsApp = () => {
+                            const temDados = celulas.some(ds => ds && mapa[ds] && (mapa[ds]['1'] || mapa[ds]['2']));
+                            if (!temDados) { alert('Não há dias definidos neste mês para gerar a imagem.'); return; }
+                            const S = 2, W = 1400, pad = 24, gap = 8, tituloH = 70, cabH = 30, cellH = 92;
+                            const linhas = Math.ceil(celulas.length / 7);
+                            const cellW = (W - pad * 2 - gap * 6) / 7;
+                            const H = pad + tituloH + cabH + linhas * (cellH + gap) + pad - gap;
+                            const cv = document.createElement('canvas');
+                            cv.width = W * S; cv.height = H * S;
+                            const ctx = cv.getContext('2d');
+                            ctx.scale(S, S);
+                            const FF = '"Segoe UI","Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+                            const rr = (x, y, w, h, r) => {
+                                ctx.beginPath();
+                                ctx.moveTo(x + r, y);
+                                ctx.arcTo(x + w, y, x + w, y + h, r);
+                                ctx.arcTo(x + w, y + h, x, y + h, r);
+                                ctx.arcTo(x, y + h, x, y, r);
+                                ctx.arcTo(x, y, x + w, y, r);
+                                ctx.closePath();
+                            };
+                            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+                            // título
+                            const tituloMes = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
+                            ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'center';
+                            ctx.fillStyle = '#1e293b'; ctx.font = `900 26px ${FF}`;
+                            ctx.fillText('Escala de Trabalho 5x2 — ' + tituloMes, W / 2, pad + 26);
+                            ctx.fillStyle = '#64748b'; ctx.font = `700 14px ${FF}`;
+                            ctx.fillText(nomeTurma('1') + ' tarde  ·  ' + nomeTurma('2') + ' tarde', W / 2, pad + 50);
+                            // cabeçalho dos dias da semana
+                            ctx.fillStyle = '#64748b'; ctx.font = `800 12px ${FF}`;
+                            ['DOM','SEG','TER','QUA','QUI','SEX','SÁB'].forEach((n, c) => {
+                                ctx.fillText(n, pad + c * (cellW + gap) + cellW / 2, pad + tituloH + 18);
+                            });
+                            // células
+                            celulas.forEach((ds, i) => {
+                                if (!ds) return;
+                                const c = i % 7, l = Math.floor(i / 7);
+                                const x = pad + c * (cellW + gap), y = pad + tituloH + cabH + l * (cellH + gap);
+                                const info = mapa[ds];
+                                ctx.fillStyle = '#ffffff'; rr(x, y, cellW, cellH, 10); ctx.fill();
+                                ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 2; rr(x, y, cellW, cellH, 10); ctx.stroke();
+                                ctx.textAlign = 'left'; ctx.fillStyle = '#1e293b'; ctx.font = `900 16px ${FF}`;
+                                ctx.fillText(String(Number(ds.slice(8))), x + 10, y + 22);
+                                ctx.textAlign = 'right'; ctx.fillStyle = '#94a3b8'; ctx.font = `800 11px ${FF}`;
+                                ctx.fillText(nomesDow[c], x + cellW - 10, y + 21);
+                                ['1', '2'].forEach((t, k) => {
+                                    const st = info && info[t];
+                                    if (!st) return;
+                                    const trab = st === 'T';
+                                    const ty = y + 32 + k * 28, tw = cellW - 16, th = 24;
+                                    ctx.fillStyle = trab ? cor(t) : '#f1f5f9'; rr(x + 8, ty, tw, th, 6); ctx.fill();
+                                    const txt = (trab ? '✅ ' : '🏖️ ') + nomeTurma(t) + ' tarde ' + (trab ? 'trabalha' : 'folga');
+                                    let tam = 12;
+                                    ctx.font = `800 ${tam}px ${FF}`;
+                                    while (ctx.measureText(txt).width > tw - 12 && tam > 8) { tam--; ctx.font = `800 ${tam}px ${FF}`; }
+                                    ctx.textAlign = 'left'; ctx.fillStyle = trab ? '#ffffff' : '#64748b';
+                                    ctx.fillText(txt, x + 14, ty + th / 2 + tam * 0.36);
+                                });
+                            });
+                            cv.toBlob((blob) => {
+                                if (!blob) { alert('Não consegui gerar a imagem neste navegador.'); return; }
+                                const a = document.createElement('a');
+                                a.href = URL.createObjectURL(blob);
+                                a.download = 'Escala_5x2_' + mesStr + '.png';
+                                document.body.appendChild(a); a.click(); a.remove();
+                                setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+                            }, 'image/png');
+                        };
+                        // MARCADOR_IMG_FIM
                         const soltar = (e, ds) => {
                             e.preventDefault(); setSimAlvo(null);
                             const [t, origem, st] = (e.dataTransfer.getData('text/plain') || '').split('|');
@@ -8214,6 +8286,7 @@
                                         <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
                                             <span style={{fontSize:'17px',fontWeight:'900',color:'#1e293b',textTransform:'capitalize'}}>{nomeMes}</span>
                                             <button onClick={() => { setSimMes(hojeStr.slice(0, 7)); setSimDiaSel(null); }} style={{padding:'4px 12px',borderRadius:'10px',border:'1.5px solid #e2e8f0',background:'white',fontWeight:'800',fontSize:'11px',color:'#64748b',cursor:'pointer'}}>Hoje</button>
+                                            <button onClick={baixarImagemWhatsApp} title="Baixa uma imagem (PNG) deste mês para enviar no WhatsApp" style={{padding:'4px 12px',borderRadius:'10px',border:'1.5px solid #bbf7d0',background:'#f0fdf4',fontWeight:'800',fontSize:'11px',color:'#15803d',cursor:'pointer'}}>📲 Baixar imagem para WhatsApp</button>
                                         </div>
                                         <button onClick={() => mudarMes(1)} style={{padding:'6px 14px',borderRadius:'10px',border:'1.5px solid #e2e8f0',background:'white',fontWeight:'900',cursor:'pointer'}}>▶</button>
                                     </div>
