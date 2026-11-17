@@ -2880,7 +2880,7 @@
 
                     {/* Modal: Mover colaborador */}
                     {modalMover && (
-                        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px'}} onClick={()=>setModalMover(null)}>
+                        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'20px'}}>
                             <div style={{background:'white',borderRadius:'20px',padding:'32px',maxWidth:'400px',width:'100%',boxShadow:'0 24px 60px rgba(0,0,0,0.25)'}} onClick={e=>e.stopPropagation()}>
                                 <div style={{fontSize:'22px',fontWeight:'800',color:'#1e1b4b',marginBottom:'6px'}}>↔ Mover Colaborador</div>
                                 <div style={{fontSize:'14px',color:'#6b7280',marginBottom:'20px'}}>
@@ -5879,7 +5879,7 @@
 
                     {/* Modal — Colaborador Temporário */}
                     {tempModal && (
-                        <div className="modal-overlay" onClick={fecharTemp}>
+                        <div className="modal-overlay">
                             <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth:'750px',width:'95%'}}>
                                 <div style={{background:'linear-gradient(135deg,#0891b2,#0e7490)',padding:'18px 24px',borderRadius:'16px 16px 0 0',display:'flex',alignItems:'center',gap:'12px'}}>
                                     <span style={{fontSize:'26px'}}>🧾</span>
@@ -6000,7 +6000,7 @@
                         const abaObj = abas.find(a => a.id === abaAtivaCadastro) || abas[0];
                         const textoAba = cadDados.dados?.[abaAtivaCadastro] || '';
                         return (
-                            <div className="modal-overlay" onClick={fecharCadastro}>
+                            <div className="modal-overlay">
                                 <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth:'750px',width:'95%'}}>
                                     {/* Header */}
                                     <div style={{background:'linear-gradient(135deg,#6d28d9,#00b4d8)',padding:'20px 24px',borderRadius:'16px 16px 0 0',display:'flex',alignItems:'center',gap:'16px'}}>
@@ -21065,7 +21065,7 @@ ${totalRefrig > 0 ? `<table><tbody><tr><td>🥤 Refrigerante Coca Cola 2 LT</td>
 
                         {/* Modal de edição da advertência jurídica */}
                         {editandoAdv && (
-                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setEditandoAdv(null); setEditAdvArquivo(null); }}>
+                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                                 <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg space-y-4" onClick={e => e.stopPropagation()}>
                                     <h3 className="font-extrabold text-gray-800 text-lg flex items-center gap-2">✏️ Editar Advertência Jurídica</h3>
                                     <div>
@@ -22310,8 +22310,7 @@ table{width:100%;border-collapse:collapse;}th,td{border-bottom:1px solid #e2e8f0
 
                             {/* Modal novo/editar agendamento */}
                             {showModalAgenda && (
-                                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}
-                                    onClick={() => setShowModalAgenda(false)}>
+                                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
                                     <div style={{ background: 'white', borderRadius: '20px', padding: '28px', width: '600px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 70px rgba(0,0,0,0.3)' }}
                                         onClick={e => e.stopPropagation()}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -23003,7 +23002,7 @@ table{width:100%;border-collapse:collapse;}th,td{border-bottom:1px solid #e2e8f0
             }, [todosRegistros, filtroVisao]);
 
             const ModalForm = ({ titulo, onSalvar, onFechar }) => (
-                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}} onClick={onFechar}>
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
                     <div style={{background:'white',borderRadius:'18px',padding:'28px',width:'420px',maxWidth:'95%',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
                         <div style={{fontWeight:'900',fontSize:'17px',color:'#1e293b',marginBottom:'20px',display:'flex',alignItems:'center',gap:'8px'}}>
                             🎓 {titulo}
@@ -23235,7 +23234,7 @@ table{width:100%;border-collapse:collapse;}th,td{border-bottom:1px solid #e2e8f0
 
                                 {/* Modal adicionar treinamento rápido */}
                                 {modalAddTr && (()=>{const c=(colaboradores||[]).find(x=>x.id===modalAddTr);return(
-                                        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}} onClick={() => setModalAddTr(null)}>
+                                        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
                                             <div style={{background:'white',borderRadius:'18px',padding:'26px',width:'400px',maxWidth:'95%',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e=>e.stopPropagation()}>
                                                 {/* Header do modal */}
                                                 <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'20px'}}>
