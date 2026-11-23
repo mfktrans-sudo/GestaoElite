@@ -3879,7 +3879,7 @@
                             { label:'Zerados',      val:stats.zerados,              emoji:'🎯', bg:'linear-gradient(135deg,#7c3aed 0%,#4c1d95 100%)', bd:'#b79cff', glow:'rgba(167,139,250,.55)',deco:'target' }
                         ];
                         const decoIcon = (t) => {
-                            if (t === 'people') return <span style={{fontSize:'70px',opacity:.2,lineHeight:1,marginRight:'6px'}}>👥</span>;
+                            if (t === 'people') return <span style={{fontSize:'64px',opacity:.25,lineHeight:'80px'}}>👥</span>;
                             if (t === 'check') return (
                                 <svg width="92" height="92" viewBox="0 0 92 92"><circle cx="46" cy="46" r="40" fill="rgba(255,255,255,.08)" stroke="rgba(120,255,170,.55)" strokeWidth="3"/><path d="M26 47 L40 61 L67 31" fill="none" stroke="#3dff82" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/></svg>);
                             if (t === 'warn') return (
@@ -3894,7 +3894,7 @@
                                     background:'radial-gradient(1200px 500px at 85% 0%,rgba(30,90,200,.35),transparent 60%),radial-gradient(900px 600px at 0% 100%,rgba(20,70,190,.28),transparent 60%),linear-gradient(180deg,#04112c 0%,#061a3f 45%,#04112c 100%)'}}>
 
                                 {/* CABEÇALHO */}
-                                <div style={{position:'relative',height:'126px'}}>
+                                <div style={{position:'relative',height:'150px'}}>
                                     <img src={HEADER_TRUCK_EXPORT} alt="" style={{position:'absolute',left:'625px',top:0,width:'615px',height:'118px',display:'block'}}/>
                                     <div style={{position:'absolute',left:'625px',top:0,width:'170px',height:'118px',background:'linear-gradient(90deg,#04112c 0%,rgba(4,17,44,0) 100%)'}}/>
                                     <div style={{position:'absolute',left:'1040px',top:0,width:'200px',height:'118px',background:'linear-gradient(270deg,#04112c 0%,rgba(4,17,44,0) 100%)'}}/>
@@ -3908,50 +3908,49 @@
                                         <circle cx="23" cy="70" r="11" fill="#17d45a"/><circle cx="23" cy="70" r="11" fill="none" stroke="#9affc0" strokeWidth="2" opacity=".6"/>
                                     </svg>
 
-                                    <div style={{position:'absolute',left:'118px',top:'24px'}}>
-                                        <div style={{fontSize:'46px',fontWeight:900,fontStyle:'italic',letterSpacing:'-1px',lineHeight:1,color:'#fff',textShadow:'0 3px 10px rgba(0,0,0,.6)'}}>EQUIPE ELITE</div>
-                                        <div style={{fontSize:'19px',fontWeight:700,letterSpacing:'5px',color:'#2f8cff',marginTop:'8px',whiteSpace:'nowrap'}}>
-                                            BANCO DE HORAS{snapLabelExp ? <span style={{color:'#8fc2ff',letterSpacing:'2px'}}> · {String(snapLabelExp).toUpperCase()}</span> : null}
-                                        </div>
+                                    <div style={{position:'absolute',left:'118px',top:'22px',width:'290px'}}>
+                                        <div style={{fontSize:'44px',fontWeight:900,fontStyle:'italic',letterSpacing:'-1px',lineHeight:'52px',height:'52px',color:'#fff',textShadow:'0 3px 10px rgba(0,0,0,.6)',whiteSpace:'nowrap'}}>EQUIPE ELITE</div>
+                                        <div style={{fontSize:'18px',fontWeight:700,letterSpacing:'4px',lineHeight:'26px',height:'26px',color:'#2f8cff',marginTop:'4px',whiteSpace:'nowrap'}}>BANCO DE HORAS</div>
+                                        {snapLabelExp ? <div style={{fontSize:'14px',fontWeight:700,letterSpacing:'1px',lineHeight:'22px',height:'22px',color:'#8fc2ff',whiteSpace:'nowrap'}}>{String(snapLabelExp).toUpperCase()}</div> : null}
                                     </div>
 
-                                    <div style={{position:'absolute',left:'416px',top:'32px',width:'2px',height:'60px',background:'linear-gradient(180deg,rgba(80,150,255,0),rgba(80,150,255,.8),rgba(80,150,255,0))'}}/>
+                                    <div style={{position:'absolute',left:'424px',top:'34px',width:'2px',height:'80px',background:'linear-gradient(180deg,rgba(80,150,255,0),rgba(80,150,255,.8),rgba(80,150,255,0))'}}/>
 
                                     {/* Data / hora */}
-                                    <svg style={{position:'absolute',left:'448px',top:'44px'}} width="40" height="42" viewBox="0 0 40 42">
+                                    <svg style={{position:'absolute',left:'452px',top:'52px'}} width="40" height="42" viewBox="0 0 40 42">
                                         <rect x="2" y="6" width="36" height="34" rx="7" fill="rgba(47,140,255,.12)" stroke="#9cc8ff" strokeWidth="2.5"/>
                                         <rect x="2" y="6" width="36" height="9" rx="4" fill="#9cc8ff"/>
                                         <rect x="9" y="1" width="4" height="9" rx="2" fill="#cfe3ff"/><rect x="27" y="1" width="4" height="9" rx="2" fill="#cfe3ff"/>
                                         {[0,1,2,3].map(i => [0,1,2].map(j => <rect key={i+'-'+j} x={8+i*7.5} y={20+j*6.5} width="4.5" height="4" rx="1" fill="#cfe3ff"/>))}
                                     </svg>
-                                    <div style={{position:'absolute',left:'503px',top:'38px'}}>
-                                        <div style={{fontSize:'23px',fontWeight:600,color:'#e6efff',lineHeight:1.15}}>{dataExp}</div>
-                                        <div style={{fontSize:'32px',fontWeight:800,color:'#fff',lineHeight:1.1,letterSpacing:'.5px'}}>{horaExp}</div>
+                                    <div style={{position:'absolute',left:'507px',top:'40px'}}>
+                                        <div style={{fontSize:'22px',fontWeight:600,color:'#e6efff',lineHeight:'32px',height:'32px',whiteSpace:'nowrap'}}>{dataExp}</div>
+                                        <div style={{fontSize:'32px',fontWeight:800,color:'#fff',lineHeight:'42px',height:'42px',letterSpacing:'.5px',whiteSpace:'nowrap'}}>{horaExp}</div>
                                     </div>
 
                                     {/* Slogan */}
-                                    <div style={{position:'absolute',right:'30px',top:'26px',textAlign:'right',transform:'rotate(-6deg)',transformOrigin:'right center'}}>
-                                        <div style={{fontSize:'22px',fontWeight:600,color:'#fff',lineHeight:1.25,textShadow:'0 2px 8px rgba(0,0,0,.7)'}}>Juntos por uma<br/>operação ainda</div>
-                                        <div style={{fontSize:'35px',fontWeight:700,fontStyle:'italic',color:'#2fa0ff',lineHeight:1.05,fontFamily:"'Segoe Script','Brush Script MT','Lucida Handwriting','Comic Sans MS',cursive",textShadow:'0 0 14px rgba(47,160,255,.55)'}}>mais eficiente!</div>
+                                    <div style={{position:'absolute',right:'36px',top:'16px',textAlign:'right',transform:'rotate(-4deg)',transformOrigin:'right center'}}>
+                                        <div style={{fontSize:'21px',fontWeight:600,color:'#fff',lineHeight:'28px',textShadow:'0 2px 8px rgba(0,0,0,.7)'}}>Juntos por uma<br/>operação ainda</div>
+                                        <div style={{fontSize:'32px',fontWeight:700,fontStyle:'italic',color:'#2fa0ff',lineHeight:'44px',fontFamily:"'Segoe Script','Brush Script MT','Lucida Handwriting','Comic Sans MS',cursive",textShadow:'0 0 14px rgba(47,160,255,.55)'}}>mais eficiente!</div>
                                     </div>
                                 </div>
 
                                 {/* BARRA POSITIVO x NEGATIVO */}
-                                <div style={{margin:'0 28px',padding:'12px 20px 10px',borderRadius:'24px',border:'2px solid rgba(74,150,255,.55)',background:'linear-gradient(180deg,rgba(6,24,60,.92),rgba(4,16,42,.92))',boxShadow:'0 0 22px rgba(47,140,255,.28), inset 0 0 18px rgba(47,140,255,.12)'}}>
+                                <div style={{margin:'0 28px',padding:'14px 20px 12px',borderRadius:'24px',border:'2px solid rgba(74,150,255,.55)',background:'linear-gradient(180deg,rgba(6,24,60,.92),rgba(4,16,42,.92))',boxShadow:'0 0 22px rgba(47,140,255,.28)'}}>
                                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                                        <div style={{display:'flex',alignItems:'center',gap:'12px',fontSize:'21px',fontWeight:800,color:'#2dea6e'}}>
+                                        <div style={{display:'flex',alignItems:'center',gap:'12px',fontSize:'21px',lineHeight:'38px',fontWeight:800,color:'#2dea6e'}}>
                                             <svg width="38" height="38" viewBox="0 0 38 38"><circle cx="19" cy="19" r="17" fill="#16c05a" stroke="#9affc0" strokeWidth="2"/><path d="M10 19.5 L16.5 26 L28 12.5" fill="none" stroke="#fff" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                             <span>Positivos: {stats.positivos} ({formatarHoras(stats.totalHorasPositivas)})</span>
                                         </div>
-                                        <div style={{display:'flex',alignItems:'center',gap:'10px',fontSize:'21px',fontWeight:800,color:'#ff3d4d'}}>
+                                        <div style={{display:'flex',alignItems:'center',gap:'10px',fontSize:'21px',lineHeight:'38px',fontWeight:800,color:'#ff3d4d'}}>
                                             <svg width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="13.5" fill="#e11d2e" stroke="#ffb3b9" strokeWidth="2"/><path d="M9.5 9.5 L20.5 20.5 M20.5 9.5 L9.5 20.5" stroke="#fff" strokeWidth="3.6" strokeLinecap="round"/></svg>
                                             <span>Negativos: {stats.negativos} ({formatarHoras(-stats.totalHorasNegativas)})</span>
                                         </div>
                                     </div>
-                                    <div style={{position:'relative',height:'16px',borderRadius:'99px',marginTop:'6px',overflow:'hidden',background:'linear-gradient(90deg,#ff7a7a,#ff3b47 40%,#ff2d3d)',boxShadow:'0 0 14px rgba(255,60,70,.45)'}}>
+                                    <div style={{position:'relative',height:'16px',borderRadius:'99px',marginTop:'8px',overflow:'hidden',background:'linear-gradient(90deg,#ff7a7a,#ff3b47 40%,#ff2d3d)',boxShadow:'0 0 14px rgba(255,60,70,.45)'}}>
                                         <div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pctPositivo}%`,borderRadius:'99px',background:'linear-gradient(90deg,#12c957,#1fe86a 70%,#7bf3a6)',boxShadow:'0 0 14px rgba(31,232,106,.7)'}}/>
                                     </div>
-                                    <div style={{display:'flex',justifyContent:'space-between',marginTop:'6px',fontSize:'13px',fontWeight:600,color:'#c9d8f2'}}>
+                                    <div style={{display:'flex',justifyContent:'space-between',marginTop:'8px',fontSize:'13px',lineHeight:'18px',fontWeight:600,color:'#c9d8f2'}}>
                                         <span style={{display:'flex',alignItems:'center',gap:'6px'}}><span style={{width:'11px',height:'11px',borderRadius:'50%',background:'#22e56a',display:'inline-block'}}/>{pctPositivo}% positivo</span>
                                         <span style={{display:'flex',alignItems:'center',gap:'6px'}}>{100-pctPositivo}% negativo<span style={{width:'11px',height:'11px',borderRadius:'50%',background:'#ff3b47',display:'inline-block'}}/></span>
                                     </div>
@@ -3960,48 +3959,49 @@
                                 {/* 4 CARDS */}
                                 <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'22px',margin:'22px 28px 0'}}>
                                     {cardsExp.map(card => (
-                                        <div key={card.label} style={{position:'relative',height:'108px',borderRadius:'20px',background:card.bg,border:`2px solid ${card.bd}`,boxShadow:`0 0 20px ${card.glow}, inset 0 0 22px rgba(255,255,255,.08)`,display:'flex',alignItems:'center',overflow:'hidden'}}>
-                                            <div style={{position:'absolute',left:'26px',top:0,height:'100%',display:'flex',alignItems:'center',fontSize:'62px',lineHeight:1}}>{card.emoji}</div>
-                                            <div style={{position:'absolute',right:'14px',top:0,height:'100%',display:'flex',alignItems:'center'}}>{decoIcon(card.deco)}</div>
-                                            <div style={{width:'100%',textAlign:'center',paddingLeft:'10px'}}>
-                                                <div style={{fontSize:'58px',fontWeight:900,lineHeight:1,textShadow:'0 3px 10px rgba(0,0,0,.45)'}}>{card.val}</div>
-                                                <div style={{fontSize:'21px',fontWeight:700,marginTop:'3px',textShadow:'0 2px 6px rgba(0,0,0,.4)'}}>{card.label}</div>
+                                        <div key={card.label} style={{position:'relative',height:'128px',borderRadius:'20px',background:card.bg,border:`2px solid ${card.bd}`,boxShadow:`0 0 20px ${card.glow}`,overflow:'hidden'}}>
+                                            <div style={{position:'absolute',left:0,top:0,width:'100%',height:'50%',background:'linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,0))'}}/>
+                                            <div style={{position:'absolute',left:'18px',top:'34px',width:'72px',height:'72px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'56px',lineHeight:'72px'}}>{card.emoji}</div>
+                                            <div style={{position:'absolute',right:'16px',top:'18px',width:'96px',height:'92px',display:'flex',alignItems:'center',justifyContent:'center'}}>{decoIcon(card.deco)}</div>
+                                            <div style={{position:'absolute',left:'100px',right:'112px',top:'8px',textAlign:'center'}}>
+                                                <div style={{fontSize:'54px',fontWeight:900,lineHeight:'72px',height:'72px',textShadow:'0 3px 10px rgba(0,0,0,.45)'}}>{card.val}</div>
+                                                <div style={{fontSize:'20px',fontWeight:700,lineHeight:'30px',height:'30px',whiteSpace:'nowrap',textShadow:'0 2px 6px rgba(0,0,0,.4)'}}>{card.label}</div>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
 
                                 {/* LISTA */}
-                                <div style={{margin:'24px 28px 0',padding:'14px 16px 18px',borderRadius:'28px',border:'2px solid rgba(60,140,255,.5)',background:'linear-gradient(180deg,rgba(6,22,56,.9),rgba(4,14,38,.92))',boxShadow:'0 0 24px rgba(47,140,255,.25), inset 0 0 24px rgba(47,140,255,.08)'}}>
-                                    <div style={{display:'flex',alignItems:'center',gap:'12px',margin:'0 0 12px 12px',fontSize:'23px',fontWeight:800,color:'#fff'}}>
-                                        <span style={{fontSize:'28px'}}>👥</span><span>{tituloListaExp}</span>
+                                <div style={{margin:'24px 28px 0',padding:'14px 16px 18px',borderRadius:'28px',border:'2px solid rgba(60,140,255,.5)',background:'linear-gradient(180deg,rgba(6,22,56,.9),rgba(4,14,38,.92))',boxShadow:'0 0 24px rgba(47,140,255,.25)'}}>
+                                    <div style={{display:'flex',alignItems:'center',gap:'12px',margin:'0 0 14px 12px',fontSize:'23px',lineHeight:'36px',fontWeight:800,color:'#fff'}}>
+                                        <span style={{fontSize:'28px',lineHeight:'36px'}}>👥</span><span>{tituloListaExp}</span>
                                     </div>
-                                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px 22px'}}>
+                                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px 22px'}}>
                                         {listaExp.map(c => {
                                             const saldo = calcularSaldoExibido(c.id);
                                             const status = getStatusColaborador(saldo);
                                             const cfg = cfgExp[status] || cfgExp.normal;
                                             const pct = Math.max(3, Math.min(100, Math.round((Math.abs(saldo) / 8) * 100)));
                                             return (
-                                                <div key={c.id} style={{display:'flex',alignItems:'center',gap:'14px',height:'52px',padding:'0 10px 0 6px',borderRadius:'14px',background:'linear-gradient(90deg,rgba(14,40,92,.55),rgba(8,24,60,.35))',borderBottom:'1px solid rgba(60,130,255,.28)'}}>
-                                                    <div style={{width:'46px',height:'46px',borderRadius:'50%',overflow:'hidden',flexShrink:0,border:`3px solid ${cfg.ring}`,boxShadow:`0 0 10px ${cfg.glow}`,background:'#0b1d44',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                                <div key={c.id} style={{display:'flex',alignItems:'center',gap:'14px',height:'64px',padding:'0 12px 0 8px',borderRadius:'14px',background:'linear-gradient(90deg,rgba(14,40,92,.55),rgba(8,24,60,.35))',borderBottom:'1px solid rgba(60,130,255,.28)'}}>
+                                                    <div style={{width:'48px',height:'48px',borderRadius:'50%',overflow:'hidden',flexShrink:0,border:`3px solid ${cfg.ring}`,boxShadow:`0 0 10px ${cfg.glow}`,background:'#0b1d44',display:'flex',alignItems:'center',justifyContent:'center'}}>
                                                         {c.foto
                                                             ? <img src={c.foto} alt="" style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
                                                             : <span style={{fontSize:'22px'}}>👤</span>}
                                                     </div>
                                                     <div style={{flex:1,minWidth:0}}>
-                                                        <div style={{fontWeight:700,fontSize:'17px',color:'#fff',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',lineHeight:1.15}}>{c.nome.trim()}</div>
-                                                        <div style={{height:'5px',borderRadius:'99px',background:'rgba(120,160,230,.18)',marginTop:'6px',overflow:'hidden'}}>
+                                                        <div style={{fontWeight:700,fontSize:(c.nome.trim().length>38?'14px':c.nome.trim().length>32?'15px':'17px'),color:'#fff',whiteSpace:'nowrap',lineHeight:'26px',height:'26px'}}>{c.nome.trim()}</div>
+                                                        <div style={{height:'6px',borderRadius:'99px',background:'rgba(120,160,230,.18)',marginTop:'4px',overflow:'hidden'}}>
                                                             <div style={{height:'100%',width:`${pct}%`,background:cfg.bar,borderRadius:'99px',boxShadow:`0 0 8px ${cfg.glow}`}}/>
                                                         </div>
                                                     </div>
-                                                    <div style={{flexShrink:0,minWidth:'88px',height:'30px',padding:'0 12px',boxSizing:'border-box',borderRadius:'99px',background:cfg.badgeBg,border:`1.5px solid ${cfg.badgeBd}`,color:cfg.badgeTx,fontWeight:800,fontSize:'15px',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px',boxShadow:`0 0 10px ${cfg.glow}`}}>
+                                                    <div style={{flexShrink:0,minWidth:'92px',height:'32px',padding:'0 12px',boxSizing:'border-box',borderRadius:'99px',background:cfg.badgeBg,border:`1.5px solid ${cfg.badgeBd}`,color:cfg.badgeTx,fontWeight:800,fontSize:'15px',lineHeight:'32px',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px',boxShadow:`0 0 10px ${cfg.glow}`}}>
                                                         {cfg.icone
-                                                            ? <span style={{fontSize:'14px'}}>{cfg.icone}</span>
+                                                            ? <span style={{fontSize:'14px',lineHeight:'32px'}}>{cfg.icone}</span>
                                                             : <span style={{width:'11px',height:'11px',borderRadius:'50%',background:'#3bb5ff',boxShadow:'0 0 6px #3bb5ff',display:'inline-block'}}/>}
-                                                        <span>{cfg.texto}</span>
+                                                        <span style={{lineHeight:'32px'}}>{cfg.texto}</span>
                                                     </div>
-                                                    <div style={{flexShrink:0,minWidth:'74px',textAlign:'right',fontWeight:800,fontSize:'20px',letterSpacing:'.3px',color:saldo>=0?'#22f06c':'#ff2d2d',textShadow:saldo>=0?'0 0 8px rgba(34,240,108,.45)':'0 0 8px rgba(255,45,45,.4)'}}>
+                                                    <div style={{flexShrink:0,minWidth:'84px',textAlign:'right',fontWeight:800,fontSize:'20px',lineHeight:'32px',height:'32px',whiteSpace:'nowrap',letterSpacing:'.3px',color:saldo>=0?'#22f06c':'#ff2d2d',textShadow:saldo>=0?'0 0 8px rgba(34,240,108,.45)':'0 0 8px rgba(255,45,45,.4)'}}>
                                                         {formatarHoras(saldo)}
                                                     </div>
                                                 </div>
@@ -4011,12 +4011,12 @@
                                 </div>
 
                                 {/* RODAPÉ */}
-                                <div style={{position:'relative',height:'62px',marginTop:'12px',display:'flex',alignItems:'center',justifyContent:'center',gap:'18px',background:'linear-gradient(180deg,rgba(4,17,44,0),rgba(7,36,100,.85))'}}>
+                                <div style={{position:'relative',height:'70px',marginTop:'14px',display:'flex',alignItems:'center',justifyContent:'center',gap:'18px',background:'linear-gradient(180deg,rgba(4,17,44,0),rgba(7,36,100,.85))'}}>
                                     <div style={{position:'absolute',left:0,bottom:0,width:'260px',height:'46px',background:'repeating-linear-gradient(115deg,rgba(40,120,255,.55) 0 14px,rgba(4,17,44,0) 14px 30px)'}}/>
                                     <div style={{position:'absolute',right:0,bottom:0,width:'260px',height:'46px',background:'repeating-linear-gradient(65deg,rgba(40,120,255,.55) 0 14px,rgba(4,17,44,0) 14px 30px)'}}/>
                                     <div style={{width:'200px',height:'3px',borderRadius:'99px',background:'linear-gradient(90deg,rgba(47,140,255,0),#2f8cff)',boxShadow:'0 0 10px #2f8cff'}}/>
-                                    <span style={{fontSize:'30px',lineHeight:1}}>🏁</span>
-                                    <span style={{fontSize:'19px',fontWeight:800,fontStyle:'italic',letterSpacing:'5px',color:'#eaf2ff',whiteSpace:'nowrap'}}>FOCO &nbsp;•&nbsp; COMPROMISSO &nbsp;•&nbsp; RESULTADO</span>
+                                    <span style={{fontSize:'30px',lineHeight:'40px'}}>🏁</span>
+                                    <span style={{fontSize:'19px',lineHeight:'30px',fontWeight:800,fontStyle:'italic',letterSpacing:'5px',color:'#eaf2ff',whiteSpace:'nowrap'}}>FOCO &nbsp;•&nbsp; COMPROMISSO &nbsp;•&nbsp; RESULTADO</span>
                                     <div style={{width:'200px',height:'3px',borderRadius:'99px',background:'linear-gradient(270deg,rgba(47,140,255,0),#2f8cff)',boxShadow:'0 0 10px #2f8cff'}}/>
                                 </div>
                             </div>
