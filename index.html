@@ -5598,163 +5598,160 @@
                     </h2>
 
                     {/* ══════════════════════════════════════════════════════ */}
-                    {/* ANIVERSARIANTES DO MÊS — PAINEL PREMIUM COM FOTOS    */}
+                    {/* ANIVERSARIANTES DO MÊS — PAINEL BANNER ANIMADO       */}
                     {/* ══════════════════════════════════════════════════════ */}
                     {aniversariantesMes.length > 0 && (() => {
-                        const mesNome = new Date().toLocaleDateString('pt-BR',{month:'long'}).replace(/^\w/,c=>c.toUpperCase());
+                        const mesNome = new Date().toLocaleDateString('pt-BR',{month:'long'}).toUpperCase();
+                        const ringCores = [
+                            {a:'#7c3aed',b:'#f97316'},   // roxo + laranja
+                            {a:'#f97316',b:'#facc15'},   // laranja + amarelo
+                            {a:'#16a34a',b:'#ef4444'},   // verde + vermelho
+                            {a:'#0ea5e9',b:'#7c3aed'},   // azul + roxo
+                        ];
+                        const confCores = ['#ef4444','#7c3aed','#0ea5e9','#16a34a','#ec4899','#ffffff','#f97316','#2563eb'];
+                        const confetes = Array.from({length:34},(_,i)=>({
+                            left:`${(i*29+7)%100}%`,
+                            cor:confCores[i%confCores.length],
+                            delay:`${((i*0.37)%4).toFixed(2)}s`,
+                            dur:`${(3.6+((i*0.53)%3)).toFixed(2)}s`,
+                            w:6+(i%3)*3, h:10+(i%4)*3,
+                            rot:(i*47)%360,
+                        }));
+                        const baloes = [
+                            {left:'1%', top:'8%',  cor:'#ef4444', size:46, dur:'5.5s', del:'0s'},
+                            {left:'8%', top:'58%', cor:'#22c55e', size:38, dur:'6.5s', del:'.8s'},
+                            {left:'47%',top:'4%',  cor:'#7c3aed', size:34, dur:'6s',   del:'.4s'},
+                            {left:'52%',top:'62%', cor:'#f97316', size:42, dur:'7s',   del:'1.2s'},
+                            {left:'96%',top:'10%', cor:'#0ea5e9', size:40, dur:'5.8s', del:'.2s'},
+                            {left:'94%',top:'64%', cor:'#ec4899', size:36, dur:'6.8s', del:'1s'},
+                        ];
                         return (
-                        <div style={{marginBottom:'24px',borderRadius:'20px',overflow:'hidden',boxShadow:'0 8px 32px rgba(245,158,11,0.25)',border:'2px solid #fde68a',position:'relative'}}>
+                        <div className="bdayx-root" style={{marginBottom:'24px',borderRadius:'22px',overflow:'hidden',boxShadow:'0 10px 36px rgba(245,158,11,0.35)',border:'2px solid #fcd34d',position:'relative',background:'radial-gradient(circle at 20% 30%,#ffd43b 0%,#ffc107 45%,#ffb300 100%)'}}>
                             <style>{`
-                                @keyframes bdayFloat {
-                                    0%,100%{transform:translateY(0) rotate(-3deg);}
-                                    50%{transform:translateY(-8px) rotate(3deg);}
-                                }
-                                @keyframes bdayGlow {
-                                    0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,0);}
-                                    50%{box-shadow:0 0 0 8px rgba(245,158,11,0.18);}
-                                }
-                                @keyframes confettiFall {
-                                    0%{transform:translateY(-10px) rotate(0deg);opacity:1;}
-                                    100%{transform:translateY(60px) rotate(720deg);opacity:0;}
-                                }
-                                @keyframes bdayCardIn {
-                                    0%{opacity:0;transform:translateY(12px) scale(0.95);}
-                                    100%{opacity:1;transform:translateY(0) scale(1);}
-                                }
-                                @keyframes todayPulseRing {
-                                    0%{box-shadow:0 0 0 0 rgba(245,158,11,0.6),0 4px 20px rgba(245,158,11,0.4);}
-                                    70%{box-shadow:0 0 0 12px rgba(245,158,11,0),0 4px 20px rgba(245,158,11,0.4);}
-                                    100%{box-shadow:0 0 0 0 rgba(245,158,11,0),0 4px 20px rgba(245,158,11,0.4);}
-                                }
-                                @keyframes shimmerBday {
-                                    0%{background-position:200% center;}
-                                    100%{background-position:-200% center;}
-                                }
-                                .bday-card-anim { animation: bdayCardIn 0.5s ease both; }
-                                .bday-today-ring { animation: todayPulseRing 2s ease-in-out infinite; }
-                                .bday-float { animation: bdayFloat 3s ease-in-out infinite; }
-                                .bday-confetti-dot {
-                                    position:absolute;
-                                    width:7px;height:7px;
-                                    border-radius:50%;
-                                    animation: confettiFall 2.5s ease-in-out infinite;
-                                    pointer-events:none;
-                                }
-                                .bday-shimmer-text {
-                                    background: linear-gradient(90deg, #92400e 0%, #f59e0b 30%, #fbbf24 50%, #f59e0b 70%, #92400e 100%);
-                                    background-size: 200% auto;
-                                    -webkit-background-clip: text;
-                                    -webkit-text-fill-color: transparent;
-                                    background-clip: text;
-                                    animation: shimmerBday 3s linear infinite;
-                                }
+                                @keyframes bdayxFall { 0%{transform:translateY(-30px) rotate(var(--r0));opacity:0;} 10%{opacity:1;} 100%{transform:translateY(340px) rotate(calc(var(--r0) + 540deg));opacity:0;} }
+                                @keyframes bdayxBalloon { 0%,100%{transform:translateY(0) rotate(-4deg);} 50%{transform:translateY(-14px) rotate(4deg);} }
+                                @keyframes bdayxCake { 0%,100%{transform:translateY(0) rotate(-3deg) scale(1);} 50%{transform:translateY(-8px) rotate(3deg) scale(1.06);} }
+                                @keyframes bdayxFlame { 0%,100%{transform:scale(1) translateY(0);opacity:1;} 50%{transform:scale(1.25,0.85) translateY(1px);opacity:.8;} }
+                                @keyframes bdayxTitle { 0%,100%{transform:rotate(-1.2deg) scale(1);} 50%{transform:rotate(1.2deg) scale(1.025);} }
+                                @keyframes bdayxShine { 0%{background-position:200% center;} 100%{background-position:-200% center;} }
+                                @keyframes bdayxIn { 0%{opacity:0;transform:translateY(26px) scale(.86);} 60%{transform:translateY(-4px) scale(1.03);} 100%{opacity:1;transform:translateY(0) scale(1);} }
+                                @keyframes bdayxGlow { 0%,100%{box-shadow:0 0 0 3px rgba(255,255,255,.9),0 0 14px 4px rgba(255,236,102,.75),0 8px 22px rgba(0,0,0,.12);} 50%{box-shadow:0 0 0 3px rgba(255,255,255,1),0 0 26px 9px rgba(255,236,102,1),0 8px 22px rgba(0,0,0,.12);} }
+                                @keyframes bdayxRing { 0%,100%{transform:scale(1);} 50%{transform:scale(1.05);} }
+                                @keyframes bdayxSpin { from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
+                                @keyframes bdayxCal { 0%,86%,100%{transform:rotate(0deg);} 90%{transform:rotate(-9deg);} 94%{transform:rotate(8deg);} 97%{transform:rotate(-4deg);} }
+                                @keyframes bdayxHoje { 0%{box-shadow:0 0 0 0 rgba(239,68,68,.65);} 70%{box-shadow:0 0 0 16px rgba(239,68,68,0);} 100%{box-shadow:0 0 0 0 rgba(239,68,68,0);} }
+                                @keyframes bdayxPop { 0%,100%{transform:translateX(-50%) scale(1);} 50%{transform:translateX(-50%) scale(1.12);} }
+                                .bdayx-conf{position:absolute;top:0;border-radius:2px;pointer-events:none;animation:bdayxFall linear infinite;z-index:1;}
+                                .bdayx-balao{position:absolute;pointer-events:none;animation:bdayxBalloon ease-in-out infinite;z-index:1;opacity:.95;}
+                                .bdayx-balao::after{content:'';position:absolute;left:50%;top:100%;width:1.5px;height:34px;background:rgba(120,53,15,.35);transform:translateX(-50%);}
+                                .bdayx-balao::before{content:'';position:absolute;left:24%;top:14%;width:22%;height:26%;border-radius:50%;background:rgba(255,255,255,.55);transform:rotate(-30deg);}
+                                .bdayx-cake{animation:bdayxCake 3.2s ease-in-out infinite;display:inline-block;filter:drop-shadow(0 8px 10px rgba(120,53,15,.35));}
+                                .bdayx-flame{display:inline-block;animation:bdayxFlame .6s ease-in-out infinite;}
+                                .bdayx-titulo{animation:bdayxTitle 4.5s ease-in-out infinite;transform-origin:left center;}
+                                .bdayx-layer{display:block;font-weight:900;line-height:.95;text-transform:uppercase;letter-spacing:-.01em;font-family:'Arial Black','Segoe UI',Impact,sans-serif;white-space:nowrap;}
+                                .bdayx-back{-webkit-text-stroke:9px var(--stroke);color:var(--stroke);text-shadow:0 5px 0 var(--stroke),0 9px 14px rgba(0,0,0,.35);}
+                                .bdayx-front{position:absolute;left:0;top:0;background-size:220% auto;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:bdayxShine 4s linear infinite;-webkit-text-stroke:1.5px rgba(255,255,255,.55);}
+                                .bdayx-card{animation:bdayxIn .7s cubic-bezier(.2,.9,.3,1.2) both;transition:transform .25s;}
+                                .bdayx-card:hover{transform:translateY(-6px) scale(1.04);}
+                                .bdayx-box{animation:bdayxGlow 2.6s ease-in-out infinite;}
+                                .bdayx-foto{animation:bdayxRing 3.4s ease-in-out infinite;}
+                                .bdayx-cal{animation:bdayxCal 5s ease-in-out infinite;transform-origin:50% 0;}
+                                .bdayx-hoje{animation:bdayxHoje 1.8s ease-out infinite;}
+                                .bdayx-hojebadge{animation:bdayxPop 1.2s ease-in-out infinite;}
+                                @media (prefers-reduced-motion: reduce){.bdayx-root *{animation:none !important;}}
                             `}</style>
 
-                            {/* Cabeçalho gradiente premium */}
-                            <div style={{background:'linear-gradient(135deg,#f59e0b 0%,#fbbf24 50%,#fcd34d 100%)',padding:'14px 20px',display:'flex',alignItems:'center',gap:'10px',position:'relative',overflow:'hidden'}}>
-                                {/* Confetes decorativos no header */}
-                                {['#fff','rgba(255,255,255,0.7)','rgba(255,255,255,0.5)'].map((cor,i)=>(
-                                    <div key={i} className="bday-confetti-dot" style={{background:cor,top:'-4px',left:`${15+i*30}%`,animationDelay:`${i*0.7}s`,animationDuration:`${2.2+i*0.4}s`}}/>
-                                ))}
-                                <span className="bday-float" style={{fontSize:'26px',display:'inline-block',zIndex:1}}>🎂</span>
-                                <div style={{zIndex:1}}>
-                                    <div style={{fontWeight:'900',fontSize:'14px',color:'white',textTransform:'uppercase',letterSpacing:'.1em',textShadow:'0 1px 4px rgba(0,0,0,0.18)'}}>
-                                        🎉 Aniversariantes de {mesNome}
-                                    </div>
-                                    <div style={{fontSize:'11px',color:'rgba(255,255,255,0.85)',fontWeight:'600',marginTop:'2px'}}>
-                                        Parabenize quem faz aniversário este mês!
-                                    </div>
-                                </div>
-                                <div style={{marginLeft:'auto',background:'rgba(255,255,255,0.35)',backdropFilter:'blur(6px)',color:'#92400e',fontWeight:'900',fontSize:'13px',borderRadius:'20px',padding:'4px 13px',border:'1.5px solid rgba(255,255,255,0.5)',zIndex:1}}>
-                                    {aniversariantesMes.length} {aniversariantesMes.length === 1 ? 'pessoa' : 'pessoas'}
-                                </div>
+                            {/* Confetes caindo */}
+                            {confetes.map((cf,i)=>(
+                                <span key={'cf'+i} className="bdayx-conf" style={{left:cf.left,width:cf.w+'px',height:cf.h+'px',background:cf.cor,animationDelay:cf.delay,animationDuration:cf.dur,'--r0':cf.rot+'deg'}}/>
+                            ))}
+                            {/* Balões flutuantes */}
+                            {baloes.map((b,i)=>(
+                                <span key={'bl'+i} className="bdayx-balao" style={{left:b.left,top:b.top,width:b.size+'px',height:Math.round(b.size*1.22)+'px',borderRadius:'50% 50% 48% 48% / 56% 56% 44% 44%',background:`radial-gradient(circle at 35% 30%,#fff8 0%,${b.cor} 38%,${b.cor} 100%)`,boxShadow:'inset -5px -6px 10px rgba(0,0,0,.18)',animationDuration:b.dur,animationDelay:b.del}}/>
+                            ))}
+
+                            {/* Contador de pessoas */}
+                            <div style={{position:'absolute',top:'12px',right:'16px',zIndex:5,background:'rgba(255,255,255,.75)',backdropFilter:'blur(6px)',color:'#78350f',fontWeight:'900',fontSize:'13px',borderRadius:'20px',padding:'4px 14px',border:'1.5px solid rgba(255,255,255,.9)',boxShadow:'0 2px 8px rgba(0,0,0,.12)'}}>
+                                {aniversariantesMes.length} {aniversariantesMes.length === 1 ? 'pessoa' : 'pessoas'}
                             </div>
 
-                            {/* Grade de cards */}
-                            <div style={{background:'linear-gradient(180deg,#fffbeb 0%,#fef9ee 100%)',padding:'16px 18px',display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'12px'}}>
-                                {aniversariantesMes.map((c, idx) => {
-                                    const dia = parseInt((c.dataNascimento||'').split('-')[2]||'0');
-                                    const hoje = isAniversarioHoje(c);
-                                    const primeiroNome = (c.nome||'').trim().split(' ')[0] || (c.nome||'').trim();
-                                    const iniciais = (c.nome||'').trim().split(' ').filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase();
-                                    return (
-                                        <div key={c.id}
-                                            className={`bday-card-anim ${hoje ? 'bday-today-ring' : ''}`}
-                                            style={{
-                                                animationDelay:`${idx*0.07}s`,
-                                                background: hoje
-                                                    ? 'linear-gradient(135deg,#f59e0b 0%,#d97706 100%)'
-                                                    : 'white',
-                                                border: hoje ? '2px solid #d97706' : '1.5px solid #fde68a',
-                                                borderRadius:'16px',
-                                                padding:'14px 10px 12px',
-                                                display:'flex',
-                                                flexDirection:'column',
-                                                alignItems:'center',
-                                                gap:'8px',
-                                                position:'relative',
-                                                cursor:'default',
-                                                transition:'transform 0.2s',
-                                            }}
-                                            onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-4px) scale(1.03)';}}
-                                            onMouseLeave={e=>{e.currentTarget.style.transform='translateY(0) scale(1)';}}
-                                        >
-                                            {/* Badge "Hoje" para quem faz anos hoje */}
-                                            {hoje && (
-                                                <div style={{position:'absolute',top:'-9px',left:'50%',transform:'translateX(-50%)',background:'linear-gradient(90deg,#dc2626,#ef4444)',color:'white',fontWeight:'900',fontSize:'9px',borderRadius:'20px',padding:'2px 10px',whiteSpace:'nowrap',border:'1.5px solid white',letterSpacing:'.06em',boxShadow:'0 2px 8px rgba(220,38,38,0.45)'}}>
-                                                    🎉 HOJE!
-                                                </div>
-                                            )}
+                            <div style={{position:'relative',zIndex:3,display:'flex',alignItems:'center',flexWrap:'wrap',gap:'22px 34px',padding:'34px 30px 30px'}}>
 
-                                            {/* Foto ou Avatar */}
-                                            <div style={{position:'relative'}}>
-                                                <div style={{
-                                                    width:'72px',height:'72px',borderRadius:'50%',overflow:'hidden',
-                                                    border: hoje ? '3px solid rgba(255,255,255,0.7)' : '3px solid #fde68a',
-                                                    boxShadow: hoje ? '0 4px 16px rgba(0,0,0,0.2)' : '0 2px 10px rgba(245,158,11,0.25)',
-                                                    flexShrink:0,background:hoje?'rgba(255,255,255,0.2)':'#fef9c3',
-                                                    display:'flex',alignItems:'center',justifyContent:'center',
-                                                }}>
-                                                    {c.foto
-                                                        ? <img src={c.foto} alt={c.nome} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
-                                                        : <span style={{fontSize:'26px',fontWeight:'900',color:hoje?'white':'#d97706'}}>{iniciais}</span>
-                                                    }
-                                                </div>
-                                                {/* Ícone de bolo/balão sobreposto */}
-                                                <div className={hoje?'icon-bounce':'icon-pulse'} style={{position:'absolute',bottom:'-4px',right:'-4px',fontSize:'20px',lineHeight:1,filter:'drop-shadow(0 2px 4px rgba(0,0,0,0.2))'}}>
-                                                    {hoje?'🎂':'🎈'}
-                                                </div>
-                                            </div>
-
-                                            {/* Nome */}
-                                            <div style={{textAlign:'center',width:'100%'}}>
-                                                <div style={{fontWeight:'800',fontSize:'13px',color:hoje?'white':'#92400e',lineHeight:1.25,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'100%'}}>
-                                                    {primeiroNome}
-                                                </div>
-                                                {/* Cargo se disponível */}
-                                                {c.cargo && (
-                                                    <div style={{fontSize:'10px',color:hoje?'rgba(255,255,255,0.75)':'#b45309',marginTop:'2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                                                        {c.cargo}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Data */}
-                                            <div style={{
-                                                background: hoje ? 'rgba(255,255,255,0.25)' : '#fef3c7',
-                                                border: hoje ? '1px solid rgba(255,255,255,0.4)' : '1px solid #fde68a',
-                                                borderRadius:'20px',
-                                                padding:'3px 10px',
-                                                fontSize:'11px',
-                                                fontWeight:'700',
-                                                color: hoje ? 'white' : '#b45309',
-                                                display:'flex',alignItems:'center',gap:'4px',
-                                            }}>
-                                                📅 dia {dia}
-                                            </div>
+                                {/* Bolo + título */}
+                                <div style={{display:'flex',alignItems:'center',gap:'18px',flex:'0 1 auto'}}>
+                                    <div style={{position:'relative',fontSize:'84px',lineHeight:1,flexShrink:0}}>
+                                        <span className="bdayx-cake">🎂</span>
+                                        <span className="bdayx-flame" style={{position:'absolute',top:'-12px',left:'30px',fontSize:'22px'}}>🔥</span>
+                                    </div>
+                                    <div className="bdayx-titulo" style={{display:'flex',flexDirection:'column',alignItems:'flex-start'}}>
+                                        <div style={{position:'relative',display:'inline-block',fontSize:'clamp(26px,3.4vw,46px)'}}>
+                                            <span className="bdayx-layer bdayx-back" style={{'--stroke':'#9a3412'}}>Aniversariantes</span>
+                                            <span className="bdayx-layer bdayx-front" style={{backgroundImage:'linear-gradient(90deg,#ff5a1f 0%,#ffb020 30%,#fff1a8 50%,#ffb020 70%,#ff5a1f 100%)'}}>Aniversariantes</span>
                                         </div>
-                                    );
-                                })}
+                                        <div style={{position:'relative',display:'inline-block',fontSize:'clamp(30px,4.2vw,58px)',marginTop:'6px'}}>
+                                            <span className="bdayx-layer bdayx-back" style={{'--stroke':'#6d28d9'}}>de {mesNome}</span>
+                                            <span className="bdayx-layer bdayx-front" style={{backgroundImage:'linear-gradient(90deg,#22d3ee 0%,#3b82f6 30%,#e0f7ff 50%,#3b82f6 70%,#22d3ee 100%)'}}>de {mesNome}</span>
+                                        </div>
+                                        <div style={{marginTop:'12px',fontWeight:'800',fontSize:'clamp(12px,1.35vw,17px)',color:'#4a1d96',textShadow:'0 1px 0 rgba(255,255,255,.6)'}}>
+                                            Parabenize quem faz aniversário este mês!
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Cards dos aniversariantes */}
+                                <div style={{flex:'1 1 320px',display:'flex',flexWrap:'wrap',justifyContent:'center',alignItems:'center',gap:'22px 26px'}}>
+                                    {aniversariantesMes.map((c, idx) => {
+                                        const dia = parseInt((c.dataNascimento||'').split('-')[2]||'0');
+                                        const hoje = isAniversarioHoje(c);
+                                        const primeiroNome = (c.nome||'').trim().split(' ')[0] || (c.nome||'').trim();
+                                        const iniciais = (c.nome||'').trim().split(' ').filter(Boolean).map(p=>p[0]).slice(0,2).join('').toUpperCase();
+                                        const rc = ringCores[idx % ringCores.length];
+                                        return (
+                                            <div key={c.id} className="bdayx-card" style={{animationDelay:`${idx*0.12}s`,display:'flex',alignItems:'center',position:'relative',cursor:'default'}}>
+                                                {/* Foto com anel colorido */}
+                                                <div className={`bdayx-foto ${hoje?'bdayx-hoje':''}`} style={{
+                                                    position:'relative',zIndex:2,width:'96px',height:'96px',borderRadius:'50%',flexShrink:0,marginRight:'-26px',
+                                                    padding:'5px',background:`conic-gradient(from 0deg,${rc.a},${rc.b},${rc.a})`,
+                                                    boxShadow:'0 6px 18px rgba(0,0,0,.25)',animationDelay:`${idx*0.4}s`
+                                                }}>
+                                                    <div style={{width:'100%',height:'100%',borderRadius:'50%',overflow:'hidden',border:'3px solid white',background:'#fef9c3',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                                        {c.foto
+                                                            ? <img src={c.foto} alt={c.nome} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                                                            : <span style={{fontSize:'32px',fontWeight:'900',color:'#d97706'}}>{iniciais}</span>}
+                                                    </div>
+                                                    <span className={hoje?'icon-bounce':'icon-pulse'} style={{position:'absolute',bottom:'-6px',left:'-6px',fontSize:'24px',lineHeight:1,filter:'drop-shadow(0 2px 4px rgba(0,0,0,.25))'}}>{hoje?'🎂':'🎈'}</span>
+                                                </div>
+
+                                                {/* Caixa com nome, cargo e data */}
+                                                <div className="bdayx-box" style={{
+                                                    position:'relative',zIndex:1,minWidth:'190px',maxWidth:'260px',borderRadius:'22px',
+                                                    background: hoje ? 'linear-gradient(135deg,#fff7ed,#ffedd5)' : 'rgba(255,255,255,.88)',
+                                                    padding:'14px 52px 18px 38px',textAlign:'center',
+                                                    border: hoje ? '2px solid #ef4444' : '2px solid #fff'
+                                                }}>
+                                                    {hoje && (
+                                                        <div className="bdayx-hojebadge" style={{position:'absolute',top:'-12px',left:'50%',background:'linear-gradient(90deg,#dc2626,#ef4444)',color:'white',fontWeight:'900',fontSize:'10px',borderRadius:'20px',padding:'3px 12px',whiteSpace:'nowrap',border:'2px solid white',letterSpacing:'.06em',boxShadow:'0 2px 8px rgba(220,38,38,.5)'}}>
+                                                            🎉 HOJE!
+                                                        </div>
+                                                    )}
+                                                    <div style={{fontWeight:'900',fontSize:'clamp(20px,2vw,28px)',color:'#3b1c8c',lineHeight:1.1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',letterSpacing:'-.01em'}}>
+                                                        {primeiroNome}
+                                                    </div>
+                                                    {c.cargo && (
+                                                        <div style={{fontSize:'11px',fontWeight:'800',color:'#3b1c8c',marginTop:'4px',textTransform:'uppercase',lineHeight:1.15,letterSpacing:'.02em'}}>
+                                                            {c.cargo}
+                                                        </div>
+                                                    )}
+                                                    {/* Calendário "dia N" */}
+                                                    <div className="bdayx-cal" style={{position:'absolute',right:'10px',bottom:'-10px',width:'44px',borderRadius:'8px',overflow:'hidden',background:'white',boxShadow:'0 3px 10px rgba(0,0,0,.28)',border:'1.5px solid #e5e7eb',textAlign:'center'}}>
+                                                        <div style={{background:'#ef4444',color:'white',fontSize:'9px',fontWeight:'800',lineHeight:'13px'}}>dia</div>
+                                                        <div style={{fontSize:'20px',fontWeight:'900',color:'#1e1b4b',lineHeight:'24px'}}>{dia}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                         );
